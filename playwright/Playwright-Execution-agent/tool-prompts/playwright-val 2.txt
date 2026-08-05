@@ -1,0 +1,283 @@
+import json
+import time
+from typing import Any, Dict, List, Optional, Type
+from pydantic import BaseModel, Field
+from crewai.tools import BaseTool
+
+
+class ExecutionEvidenceCollectorValidatorSchema(BaseModel):
+    """Input schema for ExecutionEvidenceCollectorValidatorTool."""
+    execution_observations: str = Field(
+        default="{}",
+        description=(
+            "Raw execution observations JSON string from the Playwright Executor Tool, including "
+            "execution_results, execution_timeline, navigation_history, interaction_history, "
+            "console_summary, js_exception_summary, network_summary, unknowns, execution_metadata."
+        )
+    )
+    scenario_specification_blueprint: str = Field(
+        default="{}",
+        description="The complete Scenario Specification Blueprint JSON string from the upstream Scenario Generation Agent."
+    )
+
+
+class ExecutionEvidenceCollectorValidatorTool(BaseTool):
+    """
+    ExecutionEvidenceCollectorValidatorTool — Collects, validates, and organizes
+    execution evidence, generating a structured Execution Evidence Blueprint.
+    """
+    name: str = "Execution Evidence Collector & Validator Tool"
+    description: str = (
+        "Collects, validates, and organizes execution evidence from the Playwright Executor Tool, "
+        "generating a complete structured Execution Evidence Blueprint."
+    )
+    args_schema: Type[BaseModel] = ExecutionEvidenceCollectorValidatorSchema
+
+    def _run(
+        self,
+        execution_observations: str = "{}",
+        scenario_specification_blueprint: str = "{}",
+        **kwargs: Any
+    ) -> str:
+        try:
+            # ── Normalise all inputs (may arrive as JSON strings) ──────────
+            def to_dict(val, default):
+                if val is None:
+                    return default
+                if isinstance(val, dict):
+                    return val
+                if isinstance(val, str):
+                    try:
+                        return json.loads(val)
+                    except Exception:
+                        return default
+                return default
+
+            observations = to_dict(execution_observations, {})
+            blueprint    = to_dict(scenario_specification_blueprint, {})
+            auto_meta    = to_dict(kwargs.get("automation_metadata"), {})
+            exec_meta    = to_dict(kwargs.get("execution_metadata"), {})
+
+            # If exec_meta came nested inside observations, extract it
+            if not exec_meta and "execution_metadata" in observations:
+                exec_meta = observations["execution_metadata"]
+
+            # If auto_meta came nested inside observations, extract it
+            if not auto_meta and "automation_metadata" in observations:
+                auto_meta = observations["automation_metadata"]
+
+            # ── Extract scenarios using correct Agent 3 key ────────────────
+            # Agent 3 uses "Scenario Specifications" (not "scenarios")
+            specs = blueprint.get("Scenario Specifications", [])
+
+            # ── Extract execution results from observations ─────────────────
+            observed_results = observations.get("execution_results", [])
+            # Build lookup by scenario_id
+            observed_map = {r.get("scenario_id", ""): r for r in observed_results}
+
+            # ── 1. Scenario execution results ──────────────────────────────
+            scenario_results   = []
+            missing_scenarios  = []
+
+            for spec in specs:
+                # Agent 3 uses "Scenario Identifier" (not "id")
+                sid  = spec.get("Scenario Identifier", "")
+                name = spec.get("Scenario Name", "")
+                observed = observed_map.get(sid)
+                if observed:
+                    scenario_results.append(observed)
+                else:
+                    missing_scenarios.append(sid)
+                    # Add placeholder for unexecuted scenarios
+                    scenario_results.append({
+                        "scenario_id":   sid,
+                        "scenario_name": name,
+                        "status":        "NOT_EXECUTED",
+                        "duration":      0,
+                        "retry_count":   0,
+                        "phases":        []
+                    })
+
+            # ── 2. Phase results ───────────────────────────────────────────
+            phase_results        = []
+            missing_phase_results = []
+
+            for result in scenario_results:
+                phases = result.get("phases", [])
+                for phase_name in ["Preparation", "Navigation", "Business Action", "Verification", "Cleanup"]:
+                    phase_data = next((p for p in phases if p.get("name") == phase_name), None)
+                    if phase_data:
+                        phase_results.append({**phase_data, "scenario_id": result.get("scenario_id")})
+                    else:
+                        missing_phase_results.append({
+                            "scenario_id": result.get("scenario_id"),
+                            "phase":       phase_name
+                        })
+
+            # ── 3. Timeline ────────────────────────────────────────────────
+            timeline = observations.get("execution_timeline", [])
+            timeline_valid = bool(timeline) and all("timestamp" in e for e in timeline)
+
+            # ── 4. Navigation history ──────────────────────────────────────
+            navigation_history = observations.get("navigation_history", [])
+            navigation_valid   = bool(navigation_history)
+
+            # ── 5. Interaction history ─────────────────────────────────────
+            interaction_history = observations.get("interaction_history", [])
+            interaction_valid   = bool(interaction_history)
+
+            # ── 6. Console summary ─────────────────────────────────────────
+            console_raw = observations.get("console_summary", {})
+            console_summary = {
+                "InformationCount": console_raw.get("info", 0),
+                "WarningCount":     console_raw.get("warnings", 0),
+                "ErrorCount":       console_raw.get("errors", 0),
+                "CriticalMessages": console_raw.get("critical", [])
+            }
+
+            # ── 7. JavaScript exception summary ───────────────────────────
+            js_raw = observations.get("js_exception_summary", {})
+            js_summary = {
+                "ReferenceErrors":      js_raw.get("reference_errors", 0),
+                "TypeErrors":           js_raw.get("type_errors", 0),
+                "UnhandledExceptions":  js_raw.get("unhandled_exceptions", 0),
+                "PromiseRejections":    js_raw.get("promise_rejections", 0),
+                "PageCrashes":          js_raw.get("page_crashes", 0),
+                "ExceptionCount":       js_raw.get("exception_count", 0)
+            }
+
+            # ── 8. Network summary ─────────────────────────────────────────
+            net_raw = observations.get("network_summary", {})
+            network_summary = {
+                "RequestCount":       net_raw.get("request_count", 0),
+                "SuccessfulRequests": net_raw.get("successful_requests", 0),
+                "FailedRequests":     net_raw.get("failed_requests", 0),
+                "RedirectCount":      net_raw.get("redirect_count", 0),
+                "TimeoutCount":       net_raw.get("timeout_count", 0),
+                "HTTPErrors":         net_raw.get("http_errors", []),
+                "FailedEndpoints":    net_raw.get("failed_endpoints", [])
+            }
+
+            # ── 9. Counts ─────────────────────────────────────────────────
+            passed  = sum(1 for r in scenario_results if r.get("status") == "PASS")
+            failed  = sum(1 for r in scenario_results if r.get("status") == "FAIL")
+            skipped = sum(1 for r in scenario_results if r.get("status") == "SKIPPED")
+            blocked = sum(1 for r in scenario_results if r.get("status") == "BLOCKED")
+            partial = sum(1 for r in scenario_results if r.get("status") == "PARTIAL")
+            unknown = sum(1 for r in scenario_results if r.get("status") in ("UNKNOWN", "NOT_EXECUTED"))
+
+            # ── 10. Confidence ────────────────────────────────────────────
+            evidence_complete = (
+                not missing_scenarios
+                and timeline_valid
+                and navigation_valid
+                and interaction_valid
+            )
+            confidence = "HIGH" if evidence_complete else ("MEDIUM" if passed > 0 else "LOW")
+
+            # ── 11. Execution status ──────────────────────────────────────
+            if failed > 0:
+                execution_status = "PARTIAL"
+            elif missing_scenarios:
+                execution_status = "PARTIAL"
+            else:
+                execution_status = "COMPLETE"
+
+            # ── 12. Traceability ──────────────────────────────────────────
+            traceability = {}
+            for spec in specs:
+                sid = spec.get("Scenario Identifier", "")
+                traceability[sid] = {
+                    "scenario_name":      spec.get("Scenario Name", ""),
+                    "phases":             spec.get("Scenario Phases", []),
+                    "business_module":    sid.split("-")[0] if "-" in sid else "Unknown",
+                    "execution_profile":  spec.get("Execution Profile", ""),
+                    "execution_sequence": spec.get("Execution Sequence", ""),
+                    "automation_hints":   spec.get("Automation Hints", []),
+                    "unknown_areas":      spec.get("Unknown Areas", []),
+                    "confidence":         spec.get("Confidence", "Unknown"),
+                    "automation_metadata": auto_meta,
+                    "execution_metadata":  exec_meta
+                }
+
+            # ── 13. Unknown areas ─────────────────────────────────────────
+            unknown_areas = {
+                "ScenarioUnknowns":    blueprint.get("Unknown Areas", []),
+                "ExecutionUnknowns":   observations.get("unknowns", []),
+                "EnvironmentUnknowns": ["Browser runtime not available in sandbox environment"],
+                "AutomationUnknowns":  [] if len(scenario_results) > 0 else ["No scenarios were executed"]
+            }
+
+            # ── 14. Evidence summary ───────────────────────────────────────
+            evidence_summary = {
+                "ObservedFailures":         [r["scenario_id"] for r in scenario_results if r.get("status") == "FAIL"],
+                "ObservedWarnings":         [],
+                "ObservedRecoveries":       [],
+                "ObservedRetries":          [r["scenario_id"] for r in scenario_results if r.get("retry_count", 0) > 0],
+                "ObservedUnknowns":         [r["scenario_id"] for r in scenario_results if r.get("status") in ("UNKNOWN", "NOT_EXECUTED")],
+                "ObservedBlockers":         [r["scenario_id"] for r in scenario_results if r.get("status") == "BLOCKED"],
+                "ObservedEnvironmentIssues": [],
+                "MissingScenarios":         missing_scenarios,
+                "MissingPhaseResults":      missing_phase_results
+            }
+
+            # ── Assemble final blueprint ──────────────────────────────────
+            evidence_blueprint = {
+                "ExecutionSummary": {
+                    "ExecutionIdentifier":      exec_meta.get("execution_id", "Unknown"),
+                    "ExecutionTimestamp":       exec_meta.get("timestamp", time.strftime("%Y-%m-%dT%H:%M:%SZ")),
+                    "ExecutionDuration":        exec_meta.get("duration", "Unknown"),
+                    "ExecutionStatus":          execution_status,
+                    "ExecutionProfile":         exec_meta.get("execution_profile", "Unknown"),
+                    "ExecutionEnvironment":     exec_meta.get("environment", "Unknown"),
+                    "Browser":                  exec_meta.get("browser", "Unknown"),
+                    "Platform":                 exec_meta.get("platform", "Unknown"),
+                    "TotalScenariosRequested":  len(specs),
+                    "TotalScenariosExecuted":   len(scenario_results),
+                    "Passed":                   passed,
+                    "Failed":                   failed,
+                    "Skipped":                  skipped,
+                    "Blocked":                  blocked,
+                    "Partial":                  partial,
+                    "Unknown":                  unknown,
+                    "OverallExecutionConfidence": confidence
+                },
+                "ScenarioExecutionResults": scenario_results,
+                "ScenarioPhaseResults":     phase_results,
+                "ExecutionTimeline":        timeline,
+                "NavigationHistory":        navigation_history,
+                "InteractionHistory":       interaction_history,
+                "BrowserObservations": {
+                    "ConsoleSummary":            console_summary,
+                    "JavaScriptExceptionSummary": js_summary,
+                    "NetworkSummary":            network_summary,
+                    "NavigationErrors":          [],
+                    "PageErrors":                [],
+                    "UnexpectedRedirects":       [],
+                    "DialogEvents":              [],
+                    "SessionEvents":             []
+                },
+                "ExecutionMetadata":    exec_meta,
+                "AutomationMetadata":   auto_meta,
+                "EvidenceSummary":      evidence_summary,
+                "UnknownAreas":         unknown_areas,
+                "Confidence": {
+                    "ExecutionConfidence":          confidence,
+                    "ScenarioBlueprintConfidence":  blueprint.get("Confidence Summary", {}).get("Overall Scenario Confidence", "Medium-High"),
+                    "EvidenceCompletenessConfidence": confidence
+                },
+                "Traceability":            traceability,
+                "ExecutionCompletionStatus": execution_status,
+                "BlueprintVersion":          blueprint.get("Application Summary", {}).get("Scenario Version", "1.0"),
+                "HandoffReadiness":          execution_status == "COMPLETE"
+            }
+
+            return json.dumps(evidence_blueprint, ensure_ascii=False, indent=2)
+
+        except Exception as e:
+            return json.dumps({
+                "ExecutionCompletionStatus": f"error: {str(e)}",
+                "ExecutionSummary": {},
+                "ScenarioExecutionResults": [],
+                "Confidence": "LOW"
+            }, ensure_ascii=False)
