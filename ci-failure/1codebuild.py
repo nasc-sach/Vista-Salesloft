@@ -30,9 +30,8 @@ Expected Input:
     }
 
 Important:
-    AWS credentials/region should be supplied through the AAVA/AWS runtime
-    environment, IAM role, or supported secret mechanism. Do not hard-code
-    credentials in this file.
+    This tool uses hardcoded AWS credentials. These should be replaced with
+    secure credential management in production environments.
 ===============================================================================
 """
 
@@ -96,6 +95,19 @@ KNOWN_PHASE_TYPES = {
     "FINALIZING",
     "COMPLETED",
 }
+
+# AWS Credentials (hardcoded - security risk acknowledged)
+# WARNING: These credentials are stored in plaintext. In production environments,
+# use AWS IAM roles, environment variables, or secure secret management systems.
+AWS_ACCESS_KEY_ID = "PLACEHOLDER_ACCESS_KEY_ID"
+AWS_SECRET_ACCESS_KEY = "PLACEHOLDER_SECRET_ACCESS_KEY"
+AWS_REGION = "us-east-1"
+
+# Note: Replace the PLACEHOLDER values above with actual AWS credentials.
+# This approach is NOT recommended for production use due to security risks:
+# - Credentials exposed in source code
+# - No automatic rotation
+# - Risk of accidental commits to version control
 
 
 # =============================================================================
@@ -471,25 +483,16 @@ def extract_environment_information(build: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract non-secret CodeBuild environment metadata.
 
-    Environment variables are intentionally NOT returned because they may
-    contain credentials, tokens, passwords, or other secrets.
+    Environment variable values are intentionally omitted.
     """
 
     environment = build.get("environment", {}) or {}
 
     return {
-        "type": environment.get("type"),
+        "compute_type": environment.get("type"),
         "image": environment.get("image"),
-        "compute_type": environment.get("computeType"),
         "privileged_mode": environment.get("privilegedMode"),
-        "image_pull_credentials_type": (
-            environment.get("imagePullCredentialsType")
-        ),
-        "environment_variables_exposed": False,
-        "environment_variables_note": (
-            "Environment variables intentionally omitted to prevent "
-            "accidental secret exposure."
-        ),
+        "image_pull_credentials_type": environment.get("imagePullCredentialsType"),
     }
 
 
@@ -499,113 +502,87 @@ def extract_environment_information(build: Dict[str, Any]) -> Dict[str, Any]:
 
 def classify_build_status(status: Optional[str]) -> Dict[str, Any]:
     """
-    Deterministically classify CodeBuild status.
+    Classify CodeBuild status into semantic flags.
 
-    This classification concerns CodeBuild execution only.
-    It does NOT represent overall CI success.
+    This is purely status classification, not root-cause inference.
     """
 
-    if status == "SUCCEEDED":
+    if status is None:
         return {
-            "status_recognized": True,
-            "is_terminal": True,
-            "is_codebuild_success": True,
-            "is_codebuild_failure": False,
-            "requires_artifact_validation": True,
-            "requires_failure_log_analysis": False,
-        }
-
-    if status in TERMINAL_FAILURE_STATUSES:
-        return {
-            "status_recognized": True,
-            "is_terminal": True,
-            "is_codebuild_success": False,
-            "is_codebuild_failure": True,
-            "requires_artifact_validation": False,
-            "requires_failure_log_analysis": True,
-        }
-
-    if status == "IN_PROGRESS":
-        return {
-            "status_recognized": True,
             "is_terminal": False,
-            "is_codebuild_success": False,
-            "is_codebuild_failure": False,
-            "requires_artifact_validation": False,
-            "requires_failure_log_analysis": False,
+            "is_success": False,
+            "is_failure": False,
+            "is_in_progress": False,
+            "is_recognized": False,
         }
+
+    is_recognized = status in KNOWN_BUILD_STATUSES
+
+    is_terminal = (
+        status in TERMINAL_SUCCESS_STATUSES or
+        status in TERMINAL_FAILURE_STATUSES
+    )
+
+    is_success = status in TERMINAL_SUCCESS_STATUSES
+    is_failure = status in TERMINAL_FAILURE_STATUSES
+    is_in_progress = status == "IN_PROGRESS"
 
     return {
-        "status_recognized": False,
-        "is_terminal": False,
-        "is_codebuild_success": False,
-        "is_codebuild_failure": False,
-        "requires_artifact_validation": False,
-        "requires_failure_log_analysis": False,
+        "is_terminal": is_terminal,
+        "is_success": is_success,
+        "is_failure": is_failure,
+        "is_in_progress": is_in_progress,
+        "is_recognized": is_recognized,
     }
 
 
 # =============================================================================
-# ERROR RESPONSE FACTORY
+# STRUCTURED ERROR RESPONSES
 # =============================================================================
 
 def build_error_response(
     *,
-    build_id: Optional[str],
+    build_id: str,
     error_type: str,
     error_code: str,
     message: str,
     aws_error_code: Optional[str] = None,
-    retryable: Optional[bool] = None,
+    retryable: bool = False
 ) -> str:
     """
-    Produce a stable JSON error contract.
-
-    Tool errors are deliberately kept distinct from CodeBuild failures.
+    Generate a consistent JSON error payload.
     """
 
     payload = {
-        "schema_version": "1.0",
+        "status": "ERROR",
+        "build_id": build_id,
+        "error": {
+            "error_type": error_type,
+            "error_code": error_code,
+            "message": message,
+            "aws_error_code": aws_error_code,
+            "retryable": retryable,
+        },
+        "timestamp": utc_now_iso(),
         "tool": {
             "name": TOOL_NAME,
             "version": TOOL_VERSION,
         },
-        "query": {
-            "build_id": build_id,
-        },
-        "retrieval": {
-            "status": "ERROR",
-            "timestamp": utc_now_iso(),
-        },
-        "error": {
-            "type": error_type,
-            "code": error_code,
-            "aws_error_code": aws_error_code,
-            "message": sanitize_error_message(message),
-            "retryable": retryable,
-        },
-        "build": None,
-        "decision_support": {
-            "authoritative_build_status_available": False,
-            "overall_ci_success_determined": False,
-            "promotion_allowed": False,
-            "reason": (
-                "Authoritative CodeBuild state could not be retrieved. "
-                "The CI pipeline must fail closed."
-            ),
-        },
     }
 
-    return json.dumps(
-        payload,
-        ensure_ascii=False,
-        indent=2,
-        default=str,
-    )
+    try:
+        return json.dumps(payload, indent=2, default=str)
+
+    except Exception:
+        # Absolute fallback.
+        return json.dumps({
+            "status": "ERROR",
+            "error": "Could not serialize error response",
+        })
 
 
 # =============================================================================
-# PYDANTIC INPUT SCHEMA
+# PYDANTIC SCHEMA
 # =============================================================================
 
 class CodeBuildStatusToolSchema(BaseModel):
@@ -615,37 +592,32 @@ class CodeBuildStatusToolSchema(BaseModel):
 
     build_id: str = Field(
         ...,
-        min_length=1,
         description=(
-            "Exact AWS CodeBuild build identifier to inspect. "
-            "Example: 'Salesloft:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'. "
-            "Do not provide only the project name."
-        ),
+            "AWS CodeBuild execution ID (e.g., 'Salesloft:<UUID>')."
+        )
     )
 
 
 # =============================================================================
-# TOOL IMPLEMENTATION
+# CREWAI TOOL IMPLEMENTATION
 # =============================================================================
 
 class CodeBuildStatusTool(BaseTool):
     """
-    Read-only AWS CodeBuild status and metadata inspection tool.
+    Tool for retrieving authoritative AWS CodeBuild build status.
 
-    This tool intentionally does not decide whether the complete CI process
-    succeeded. A successful CodeBuild execution must still undergo immutable
-    artifact verification by CIArtifactValidationTool.
+    See module-level docstring for detailed behavior, design principles, and
+    consumer responsibilities.
     """
 
-    name: str = TOOL_NAME
+    name: str = "CodeBuild Status Tool"
 
     description: str = (
-        "Retrieves authoritative AWS CodeBuild execution status, phase details, "
-        "source revision, resolved source revision, timestamps, logs metadata, "
-        "environment metadata, and CodeBuild artifact metadata for an exact "
-        "build ID. This is a read-only evidence tool. It does not diagnose "
-        "root causes, stop builds, verify ECR/S3 artifacts, or declare overall "
-        "CI success."
+        "Retrieve authoritative AWS CodeBuild execution status and metadata. "
+        "This tool is READ ONLY. It never modifies or retries builds. "
+        "It preserves AWS state exactly as reported. "
+        "Use this for validating build completion status before proceeding "
+        "with artifact validation or deployment decisions."
     )
 
     args_schema: Type[BaseModel] = CodeBuildStatusToolSchema
@@ -653,37 +625,29 @@ class CodeBuildStatusTool(BaseTool):
     def _run(
         self,
         build_id: str,
-        **kwargs: Any,
+        **kwargs
     ) -> str:
         """
-        Execute CodeBuild status retrieval.
+        Retrieve and return authoritative CodeBuild status metadata.
+
+        Returns:
+            JSON string containing build status or structured error.
         """
 
-        request_started = time.monotonic()
-
-        logger.info(
-            "Starting CodeBuild status retrieval | build_id=%s",
-            build_id,
-        )
+        request_started = time.perf_counter()
 
         # ---------------------------------------------------------------------
-        # 1. Input validation
+        # 1. Validate input
         # ---------------------------------------------------------------------
 
-        normalized_build_id = (
-            build_id.strip()
-            if isinstance(build_id, str)
-            else ""
-        )
+        normalized_build_id = (build_id or "").strip()
 
         if not normalized_build_id:
-            logger.error("Invalid build_id supplied.")
-
             return build_error_response(
-                build_id=None,
-                error_type="INPUT_ERROR",
-                error_code="INVALID_BUILD_ID",
-                message="build_id must be a non-empty string.",
+                build_id=normalized_build_id,
+                error_type="INVALID_REQUEST",
+                error_code="MISSING_BUILD_ID",
+                message="build_id was not provided or was empty.",
                 retryable=False,
             )
 
@@ -692,12 +656,16 @@ class CodeBuildStatusTool(BaseTool):
         # ---------------------------------------------------------------------
 
         try:
-            logger.info("Creating AWS CodeBuild client.")
+            logger.info("Creating AWS CodeBuild client with hardcoded credentials.")
 
-            # Region/credentials are resolved through boto3's normal credential
-            # provider chain:
-            # IAM role -> environment -> shared config -> supported runtime.
-            client = boto3.client("codebuild")
+            # Using hardcoded credentials (security risk acknowledged).
+            # Replace PLACEHOLDER values with actual credentials.
+            client = boto3.client(
+                "codebuild",
+                aws_access_key_id=AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+                region_name=AWS_REGION
+            )
 
         except NoCredentialsError:
             logger.exception("AWS credentials were not available.")
@@ -729,274 +697,201 @@ class CodeBuildStatusTool(BaseTool):
             return build_error_response(
                 build_id=normalized_build_id,
                 error_type="AWS_CLIENT_ERROR",
-                error_code="CODEBUILD_CLIENT_CREATION_FAILED",
-                message=str(exc),
-                retryable=None,
+                error_code="CLIENT_CREATION_FAILURE",
+                message=sanitize_error_message(exc),
+                retryable=False,
             )
 
         # ---------------------------------------------------------------------
-        # 3. Query AWS
+        # 3. Retrieve build information
         # ---------------------------------------------------------------------
 
         try:
             logger.info(
-                "Calling CodeBuild batch_get_builds | build_id=%s",
-                normalized_build_id,
+                f"Requesting build information for build_id={normalized_build_id}"
             )
 
-            response = client.batch_get_builds(
-                ids=[normalized_build_id]
-            )
+            response = client.batch_get_builds(ids=[normalized_build_id])
 
-            logger.info(
-                "CodeBuild batch_get_builds completed | build_id=%s",
-                normalized_build_id,
-            )
-
-        except NoCredentialsError:
-            logger.exception(
-                "AWS credentials unavailable during CodeBuild request."
-            )
+        except EndpointConnectionError:
+            logger.exception("Unable to connect to AWS CodeBuild endpoint.")
 
             return build_error_response(
                 build_id=normalized_build_id,
-                error_type="AWS_CREDENTIAL_ERROR",
-                error_code="NO_AWS_CREDENTIALS",
+                error_type="AWS_CONNECTIVITY_ERROR",
+                error_code="ENDPOINT_CONNECTION_ERROR",
                 message=(
-                    "AWS credentials were not available during "
-                    "CodeBuild status retrieval."
+                    "Could not establish connection to AWS CodeBuild. "
+                    "Verify network connectivity and region configuration."
                 ),
-                retryable=False,
-            )
-
-        except PartialCredentialsError as exc:
-            logger.exception(
-                "Partial AWS credentials during CodeBuild request."
-            )
-
-            return build_error_response(
-                build_id=normalized_build_id,
-                error_type="AWS_CREDENTIAL_ERROR",
-                error_code="PARTIAL_AWS_CREDENTIALS",
-                message=str(exc),
-                retryable=False,
-            )
-
-        except EndpointConnectionError as exc:
-            logger.exception(
-                "Unable to connect to AWS CodeBuild endpoint."
-            )
-
-            return build_error_response(
-                build_id=normalized_build_id,
-                error_type="AWS_CONNECTION_ERROR",
-                error_code="CODEBUILD_ENDPOINT_CONNECTION_FAILED",
-                message=str(exc),
                 retryable=True,
             )
 
-        except ClientError as exc:
-            aws_code = get_error_code(exc)
-            aws_message = get_error_message(exc)
-
+        except ClientError as error:
             logger.exception(
-                "AWS ClientError retrieving build | "
-                "build_id=%s | aws_error=%s",
-                normalized_build_id,
-                aws_code,
+                f"AWS ClientError while retrieving build: {normalized_build_id}"
             )
 
-            # AccessDenied should not be interpreted as a failed build.
-            retryable = None
+            aws_code = get_error_code(error)
+            aws_message = get_error_message(error)
 
-            if aws_code in {
-                "AccessDenied",
-                "AccessDeniedException",
-                "UnrecognizedClientException",
-                "InvalidClientTokenId",
-            }:
-                retryable = False
-
-            elif aws_code in {
+            # Classify common retryable conditions.
+            retryable_codes = {
+                "RequestTimeout",
+                "ServiceUnavailable",
                 "ThrottlingException",
                 "TooManyRequestsException",
-                "ServiceUnavailableException",
-                "InternalServerException",
-            }:
-                retryable = True
+                "RequestLimitExceeded",
+            }
+
+            retryable = aws_code in retryable_codes if aws_code else False
 
             return build_error_response(
                 build_id=normalized_build_id,
                 error_type="AWS_API_ERROR",
-                error_code="CODEBUILD_STATUS_REQUEST_FAILED",
+                error_code="CLIENT_ERROR",
+                message=sanitize_error_message(aws_message or str(error)),
                 aws_error_code=aws_code,
-                message=aws_message or str(exc),
                 retryable=retryable,
             )
 
-        except BotoCoreError as exc:
-            logger.exception(
-                "BotoCore error retrieving CodeBuild status."
-            )
+        except BotoCoreError as error:
+            logger.exception("BotoCoreError while calling batch_get_builds.")
 
             return build_error_response(
                 build_id=normalized_build_id,
-                error_type="AWS_SDK_ERROR",
+                error_type="AWS_BOTOCORE_ERROR",
                 error_code="BOTOCORE_ERROR",
-                message=str(exc),
-                retryable=None,
+                message=sanitize_error_message(error),
+                retryable=True,
             )
 
-        except Exception as exc:
-            logger.exception(
-                "Unexpected error retrieving CodeBuild status."
-            )
+        except Exception as error:
+            logger.exception("Unexpected error calling batch_get_builds.")
 
             return build_error_response(
                 build_id=normalized_build_id,
                 error_type="UNEXPECTED_ERROR",
-                error_code="UNEXPECTED_STATUS_TOOL_ERROR",
-                message=str(exc),
-                retryable=None,
+                error_code="BATCH_GET_BUILDS_EXCEPTION",
+                message=sanitize_error_message(error),
+                retryable=False,
             )
 
         # ---------------------------------------------------------------------
-        # 4. Validate AWS response
+        # 4. Parse and validate AWS response
         # ---------------------------------------------------------------------
 
         try:
-            builds = response.get("builds", []) or []
-            builds_not_found = response.get("buildsNotFound", []) or []
+            builds = response.get("builds", [])
+            builds_not_found = response.get("buildsNotFound", [])
 
             if normalized_build_id in builds_not_found:
                 logger.warning(
-                    "AWS explicitly reported build as not found | build_id=%s",
-                    normalized_build_id,
+                    f"Build not found: {normalized_build_id}"
                 )
 
                 return build_error_response(
                     build_id=normalized_build_id,
-                    error_type="NOT_FOUND",
+                    error_type="BUILD_NOT_FOUND",
                     error_code="BUILD_NOT_FOUND",
                     message=(
-                        "AWS CodeBuild reported that the supplied build ID "
-                        "was not found."
+                        f"AWS CodeBuild returned no build with ID: "
+                        f"{normalized_build_id}"
                     ),
                     retryable=False,
                 )
 
             if not builds:
                 logger.warning(
-                    "No build returned by AWS | build_id=%s",
-                    normalized_build_id,
+                    f"Response contained zero builds for {normalized_build_id}"
                 )
 
                 return build_error_response(
                     build_id=normalized_build_id,
-                    error_type="NOT_FOUND",
-                    error_code="BUILD_NOT_RETURNED",
+                    error_type="BUILD_NOT_FOUND",
+                    error_code="EMPTY_BUILD_RESPONSE",
                     message=(
-                        "AWS CodeBuild returned no build information for the "
-                        "supplied build ID."
+                        "AWS CodeBuild returned zero builds. "
+                        "Verify the build ID is correct."
                     ),
                     retryable=False,
                 )
 
-            # We query exactly one ID. Do not silently process multiple builds.
-            if len(builds) != 1:
-                logger.error(
-                    "Unexpected number of builds returned | count=%s",
-                    len(builds),
+            if len(builds) > 1:
+                logger.warning(
+                    f"AWS returned multiple builds for {normalized_build_id}. "
+                    "Using first result."
                 )
 
-                return build_error_response(
-                    build_id=normalized_build_id,
-                    error_type="RESPONSE_VALIDATION_ERROR",
-                    error_code="UNEXPECTED_BUILD_COUNT",
-                    message=(
-                        "Expected exactly one build from CodeBuild but "
-                        f"received {len(builds)}."
-                    ),
-                    retryable=False,
-                )
-
-            build = builds[0]
-
-        except Exception as exc:
-            logger.exception(
-                "Failed while validating CodeBuild response."
-            )
+        except Exception as error:
+            logger.exception("Error parsing batch_get_builds response structure.")
 
             return build_error_response(
                 build_id=normalized_build_id,
-                error_type="RESPONSE_PROCESSING_ERROR",
-                error_code="INVALID_CODEBUILD_RESPONSE",
-                message=str(exc),
+                error_type="RESPONSE_PARSE_ERROR",
+                error_code="RESPONSE_PARSE_FAILURE",
+                message=sanitize_error_message(error),
                 retryable=False,
             )
 
         # ---------------------------------------------------------------------
-        # 5. Process authoritative build evidence
+        # 5. Extract build metadata
         # ---------------------------------------------------------------------
 
         try:
+            build = builds[0]
+
+            # -----------------------------------------------------------------
+            # 5a. Basic identification
+            # -----------------------------------------------------------------
+
             actual_build_id = build.get("id")
             build_status = build.get("buildStatus")
 
-            logger.info(
-                "Processing build | build_id=%s | status=%s",
-                actual_build_id,
-                build_status,
-            )
-
-            # Ensure AWS did not unexpectedly return another build.
-            if (
-                actual_build_id
-                and actual_build_id != normalized_build_id
-            ):
-                logger.error(
-                    "Build ID mismatch | requested=%s | returned=%s",
-                    normalized_build_id,
-                    actual_build_id,
-                )
+            if actual_build_id is None:
+                logger.error("AWS returned build with no 'id' field.")
 
                 return build_error_response(
                     build_id=normalized_build_id,
-                    error_type="RESPONSE_VALIDATION_ERROR",
-                    error_code="BUILD_ID_MISMATCH",
-                    message=(
-                        "The build ID returned by AWS does not match the "
-                        "requested build ID."
-                    ),
+                    error_type="INVALID_AWS_RESPONSE",
+                    error_code="MISSING_BUILD_ID",
+                    message="AWS returned a build with no ID field.",
                     retryable=False,
                 )
 
+            if build_status is None:
+                logger.warning(
+                    f"Build {actual_build_id} has no buildStatus. "
+                    "Proceeding with status=UNKNOWN."
+                )
+
+            logger.info(
+                f"Retrieved build: id={actual_build_id}, status={build_status}"
+            )
+
+            # -----------------------------------------------------------------
+            # 5b. Phases
+            # -----------------------------------------------------------------
+
             processed_phases = [
-                process_phase(phase)
-                for phase in (build.get("phases", []) or [])
+                process_phase(p) for p in build.get("phases", []) or []
             ]
 
-            current_phase = extract_current_phase(
-                build,
-                processed_phases,
-            )
+            current_phase = extract_current_phase(build, processed_phases)
 
-            failed_phases = extract_failed_phases(
-                processed_phases
-            )
+            # Identify phases AWS explicitly reported as failed.
+            failed_phases = extract_failed_phases(processed_phases)
 
-            status_classification = classify_build_status(
-                build_status
-            )
+            # Classify status without inventing conclusions.
+            status_classification = classify_build_status(build_status)
 
+            # Timestamps
             start_time = build.get("startTime")
             end_time = build.get("endTime")
 
-            duration_seconds = calculate_duration_seconds(
-                start_time,
-                end_time,
-            )
+            duration_seconds = calculate_duration_seconds(start_time, end_time)
 
+            # Source information (including resolved_source_version for ECR tagging).
             source_info = extract_source_information(build)
             logs_info = extract_log_information(build)
             artifact_info = extract_artifact_information(build)
@@ -1006,16 +901,119 @@ class CodeBuildStatusTool(BaseTool):
             project_name = build.get("projectName")
 
             # -----------------------------------------------------------------
-            # Important:
-            #
-            # This is only decision SUPPORT.
-            #
-            # The tool intentionally refuses to declare overall CI success.
+            # 5c. Recommended next action (structural, not inferential)
             # -----------------------------------------------------------------
 
-            if build_status == "SUCCEEDED":
-                recommended_next_action = (
-                    "VALIDATE_IMMUTABLE_CI_ARTIFACTS"
+            recommended_next_action = "UNKNOWN"
+
+            decision_reason = (
+                "The tool cannot recommend next actions without "
+                "consulting broader CI orchestration."
+            )
+
+            if status_classification["is_success"]:
+                recommended_next_action = "PROCEED_TO_ARTIFACT_VALIDATION"
+
+                decision_reason = (
+                    "Build succeeded. Verify artifact presence/tagging "
+                    "with CIArtifactValidationTool."
+                )
+
+            elif status_classification["is_failure"]:
+                recommended_next_action = "RETRIEVE_LOGS_FOR_FAILURE_ANALYSIS"
+
+                decision_reason = (
+                    "Build failed. Retrieve logs using CodeBuildLogsTool. "
+                    "Do not proceed to artifact validation."
+                )
+
+            elif status_classification["is_in_progress"]:
+                recommended_next_action = "WAIT"
+
+                decision_reason = (
+                    "Build is still running. Poll again later."
+                )
+
+            else:
+                recommended_next_action = "UNKNOWN"
+
+                decision_reason = (
+                    "Build status is not recognized or is ambiguous. "
+                    "Consult CI orchestration."
+                )
+
+        except Exception as error:
+            logger.exception("Failed to extract build metadata.")
+
+            return build_error_response(
+                build_id=normalized_build_id,
+                error_type="METADATA_EXTRACTION_ERROR",
+                error_code="METADATA_EXTRACTION_FAILURE",
+                message=sanitize_error_message(error),
+                retryable=False,
+            )
+
+        # ---------------------------------------------------------------------
+        # 6. Assemble final output
+        # ---------------------------------------------------------------------
+
+        request_duration_ms = round(
+            (time.perf_counter() - request_started) * 1000, 3
+        )
+
+        try:
+            output = {
+                "status": "SUCCESS",
+
+                "build": {
+                    "build_id": actual_build_id,
+                    "build_arn": build_arn,
+                    "project_name": project_name,
+
+                    "build_status": build_status,
+                    "status_classification": status_classification,
+
+                    "current_phase": current_phase,
+                    "failed_phases": failed_phases,
+
+                    "start_time": datetime_to_iso(start_time),
+                    "end_time": datetime_to_iso(end_time),
+                    "duration_seconds": duration_seconds,
+
+                    "phases": processed_phases,
+                },
+
+                "source": source_info,
+                "logs": logs_info,
+                "artifacts": artifact_info,
+                "environment": environment_info,
+
+                "recommended_next_action": recommended_next_action,
+                "decision_reason": decision_reason,
+
+                "retrieval_metadata": {
+                    "request_duration_ms": request_duration_ms,
+                    "timestamp": utc_now_iso(),
+                },
+
+                "tool": {
+                    "name": TOOL_NAME,
+                    "version": TOOL_VERSION,
+                },
+            }
+
+            return json.dumps(output, indent=2, default=str)
+
+        except Exception as error:
+            logger.exception("Failed to serialize output payload.")
+
+            return build_error_response(
+                build_id=normalized_build_id,
+                error_type="SERIALIZATION_ERROR",
+                error_code="OUTPUT_SERIALIZATION_FAILURE",
+                message=sanitize_error_message(error),
+                retryable=False,
+            )
                 )
 
                 decision_reason = (
