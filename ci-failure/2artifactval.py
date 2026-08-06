@@ -70,6 +70,10 @@ TOOL_VERSION = "1.0.0"
 DEFAULT_BACKEND_REPOSITORY = "salesloft-backend"
 DEFAULT_FRONTEND_REPOSITORY = "salesloft-frontend"
 
+# Hardcoded S3 artifact location
+DEFAULT_S3_BUCKET = "salesloft-codedeploy-artifacts"
+DEFAULT_S3_KEY = "builds/latest/salesloft.zip"
+
 VERIFIED = "VERIFIED"
 MISSING = "MISSING"
 MISMATCH = "MISMATCH"
@@ -175,6 +179,128 @@ def build_ecr_uri(
 
 
 # =============================================================================
+# CODEBUILD OUTPUT PARSING
+# =============================================================================
+
+def parse_s3_arn(arn: str) -> Dict[str, Optional[str]]:
+    """
+    Parse S3 ARN format:
+
+        arn:aws:s3:::bucket/key/path
+
+    into:
+
+        {
+            "bucket": "bucket",
+            "key": "key/path"
+        }
+    """
+
+    if not arn:
+        return {
+            "bucket": None,
+            "key": None,
+        }
+
+    # ARN format: arn:aws:s3:::bucket/key
+    if not arn.startswith("arn:aws:s3:::"):
+        return {
+            "bucket": None,
+            "key": None,
+        }
+
+    # Remove the ARN prefix
+    path = arn[len("arn:aws:s3:::"):]
+
+    # Split on first slash to separate bucket from key
+    parts = path.split("/", 1)
+
+    bucket = parts[0] if parts else None
+    key = parts[1] if len(parts) > 1 else None
+
+    return {
+        "bucket": bucket,
+        "key": key,
+    }
+
+
+def parse_ecr_repository_from_uri(ecr_uri: str) -> Optional[str]:
+    """
+    Parse ECR URI format:
+
+        registry.dkr.ecr.region.amazonaws.com/repository:tag
+
+    and extract just the repository name.
+
+    Example:
+        Input: "231733667519.dkr.ecr.eu-north-1.amazonaws.com/salesloft-backend:latest"
+        Output: "salesloft-backend"
+    """
+
+    if not ecr_uri:
+        return None
+
+    # Split on "/" to separate registry from repository:tag
+    if "/" not in ecr_uri:
+        return None
+
+    # Get the repository:tag part
+    repo_with_tag = ecr_uri.split("/", 1)[1]
+
+    # Remove the :tag suffix if present
+    repository = repo_with_tag.split(":")[0]
+
+    return repository if repository else None
+
+
+def parse_codebuild_output(codebuild_json: str) -> Dict[str, Any]:
+    """
+    Parse CodeBuildStatusTool JSON output to extract:
+    - resolved_source_version
+    - S3 artifact bucket and key (from ARN)
+    - Backend and frontend ECR repository names (from environment variables)
+
+    Returns dict with extracted values or error information.
+    """
+
+    try:
+        data = json.loads(codebuild_json)
+    except json.JSONDecodeError as exc:
+        return {"error": f"Invalid JSON: {exc}"}
+
+    metadata = data.get("metadata", {})
+
+    resolved_source_version = metadata.get("resolved_source_version")
+
+    # Parse S3 artifact location from ARN
+    artifacts = metadata.get("artifacts", {})
+    s3_arn = artifacts.get("location", "")
+    s3_parsed = parse_s3_arn(s3_arn)
+
+    # Parse ECR repositories from environment variables
+    env_vars = metadata.get("environment", {}).get("environmentVariables", [])
+    backend_repo = None
+    frontend_repo = None
+
+    for var in env_vars:
+        var_name = var.get("name", "")
+        var_value = var.get("value", "")
+
+        if var_name == "BACKEND_IMAGE":
+            backend_repo = parse_ecr_repository_from_uri(var_value)
+        elif var_name == "FRONTEND_IMAGE":
+            frontend_repo = parse_ecr_repository_from_uri(var_value)
+
+    return {
+        "resolved_source_version": resolved_source_version,
+        "s3_bucket": s3_parsed.get("bucket"),
+        "s3_key": s3_parsed.get("key"),
+        "backend_repository": backend_repo,
+        "frontend_repository": frontend_repo,
+    }
+
+
+# =============================================================================
 # S3 LOCATION PARSING
 # =============================================================================
 
@@ -221,58 +347,19 @@ def parse_s3_uri(uri: str) -> Dict[str, Optional[str]]:
 
 class CIArtifactValidationToolSchema(BaseModel):
     """
-    Input schema for CIArtifactValidationTool.
+    Input schema for CIArtifactValidationTool that accepts CodeBuildStatusTool output.
 
-    resolved_source_version MUST originate from authoritative CodeBuild/source
-    metadata.
-
-    The agent must not invent it.
+    The tool parses the complete CodeBuild JSON output to extract:
+    - resolved_source_version
+    - S3 artifact location
+    - ECR repository names from environment variables
     """
 
-    resolved_source_version: str = Field(
+    codebuild_output: str = Field(
         ...,
-        min_length=1,
         description=(
-            "Authoritative immutable source revision returned by "
-            "CodeBuildStatusTool. This exact value is used as the ECR image "
-            "tag. Example: abc123def456."
-        ),
-    )
-
-    s3_bucket: Optional[str] = Field(
-        None,
-        description=(
-            "Expected S3 artifact bucket. Supply together with s3_key. "
-            "Example: salesloft-codedeploy-artifacts."
-        ),
-    )
-
-    s3_key: Optional[str] = Field(
-        None,
-        description=(
-            "Exact expected S3 object key. Supply together with s3_bucket."
-        ),
-    )
-
-    s3_uri: Optional[str] = Field(
-        None,
-        description=(
-            "Alternative to s3_bucket + s3_key. "
-            "Example: s3://bucket/path/application.zip."
-        ),
-    )
-
-    backend_repository: str = Field(
-        DEFAULT_BACKEND_REPOSITORY,
-        description=(
-            "Backend ECR repository. Defaults to salesloft-backend."
-        ),
-    )
-
-    frontend_repository: str = Field(
-        DEFAULT_FRONTEND_REPOSITORY,
-        description=(
-            "Frontend ECR repository. Defaults to salesloft-frontend."
+            "Complete JSON output from CodeBuildStatusTool containing "
+            "resolved_source_version, artifact location, and environment variables."
         ),
     )
 
@@ -830,48 +917,66 @@ class CIArtifactValidationTool(BaseTool):
 
     description: str = (
         "Verifies mandatory CI artifacts for an exact immutable source "
-        "revision. It validates the backend ECR image, frontend ECR image, "
-        "and exact S3 artifact. ECR images are validated using the "
-        "resolved_source_version as their exact immutable tag. The tool "
-        "never falls back to ':latest', never retags images, never modifies "
-        "artifacts, and never declares overall CI success."
+        "revision extracted from CodeBuildStatusTool output. It validates "
+        "the backend ECR image, frontend ECR image, and S3 artifact. "
+        "All artifact locations and repository names are extracted from "
+        "the CodeBuild output. The tool never falls back to ':latest', "
+        "never retags images, never modifies artifacts, and never declares "
+        "overall CI success."
     )
 
     args_schema: Type[BaseModel] = CIArtifactValidationToolSchema
 
     def _run(
         self,
-        resolved_source_version: str,
-        s3_bucket: Optional[str] = None,
-        s3_key: Optional[str] = None,
-        s3_uri: Optional[str] = None,
-        backend_repository: str = DEFAULT_BACKEND_REPOSITORY,
-        frontend_repository: str = DEFAULT_FRONTEND_REPOSITORY,
-        **kwargs: Any,
+        codebuild_output: str,
     ) -> str:
 
         started = time.monotonic()
 
         logger.info(
-            "Starting CI artifact validation."
+            "Starting CI artifact validation from CodeBuild output."
         )
 
         # =====================================================================
-        # 1. VALIDATE SOURCE REVISION
+        # 1. PARSE CODEBUILD OUTPUT
         # =====================================================================
 
-        if not isinstance(resolved_source_version, str):
+        if not isinstance(codebuild_output, str):
             return build_tool_error(
                 resolved_source_version=None,
-                code="INVALID_SOURCE_REVISION",
+                code="INVALID_CODEBUILD_OUTPUT",
                 message=(
-                    "resolved_source_version must be a non-empty string."
+                    "codebuild_output must be a non-empty string containing "
+                    "CodeBuildStatusTool JSON output."
                 ),
             )
 
-        revision = normalize_revision(
-            resolved_source_version
-        )
+        parsed = parse_codebuild_output(codebuild_output)
+
+        if "error" in parsed:
+            return build_tool_error(
+                resolved_source_version=None,
+                code="CODEBUILD_OUTPUT_PARSE_ERROR",
+                message=parsed["error"],
+            )
+
+        # =====================================================================
+        # 2. EXTRACT AND VALIDATE REQUIRED FIELDS
+        # =====================================================================
+
+        resolved_source_version = parsed.get("resolved_source_version")
+
+        if not resolved_source_version:
+            return build_tool_error(
+                resolved_source_version=None,
+                code="MISSING_RESOLVED_SOURCE_VERSION",
+                message=(
+                    "resolved_source_version not found in CodeBuild output."
+                ),
+            )
+
+        revision = normalize_revision(resolved_source_version)
 
         if not revision:
             return build_tool_error(
@@ -882,26 +987,11 @@ class CIArtifactValidationTool(BaseTool):
                 ),
             )
 
-        logger.info(
-            "Using immutable source revision | revision=%s",
-            revision,
-        )
+        backend_repository = parsed.get("backend_repository") or DEFAULT_BACKEND_REPOSITORY
+        frontend_repository = parsed.get("frontend_repository") or DEFAULT_FRONTEND_REPOSITORY
 
-        # =====================================================================
-        # 2. VALIDATE REPOSITORY NAMES
-        # =====================================================================
-
-        backend_repository = (
-            backend_repository.strip()
-            if isinstance(backend_repository, str)
-            else ""
-        )
-
-        frontend_repository = (
-            frontend_repository.strip()
-            if isinstance(frontend_repository, str)
-            else ""
-        )
+        backend_repository = backend_repository.strip()
+        frontend_repository = frontend_repository.strip()
 
         if not backend_repository:
             return build_tool_error(
@@ -918,70 +1008,27 @@ class CIArtifactValidationTool(BaseTool):
             )
 
         # =====================================================================
-        # 3. RESOLVE S3 LOCATION
+        # 3. EXTRACT S3 ARTIFACT LOCATION
         # =====================================================================
 
-        supplied_bucket = (
-            s3_bucket.strip()
-            if isinstance(s3_bucket, str)
-            else None
+        supplied_bucket = parsed.get("s3_bucket") or DEFAULT_S3_BUCKET
+        supplied_key = parsed.get("s3_key") or DEFAULT_S3_KEY
+
+        logger.info(
+            "Extracted artifact metadata | revision=%s | "
+            "backend_repo=%s | frontend_repo=%s | "
+            "s3_bucket=%s | s3_key=%s",
+            revision,
+            backend_repository,
+            frontend_repository,
+            supplied_bucket,
+            supplied_key,
         )
 
-        supplied_key = (
-            s3_key.strip()
-            if isinstance(s3_key, str)
-            else None
+        logger.info(
+            "Using immutable source revision | revision=%s",
+            revision,
         )
-
-        if s3_uri:
-            parsed = parse_s3_uri(s3_uri)
-
-            uri_bucket = parsed.get("bucket")
-            uri_key = parsed.get("key")
-
-            if not uri_bucket or not uri_key:
-                return build_tool_error(
-                    resolved_source_version=revision,
-                    code="INVALID_S3_URI",
-                    message=(
-                        "s3_uri must use the format "
-                        "'s3://bucket/exact/object/key'."
-                    ),
-                )
-
-            # If both representations were supplied, they must agree.
-            if supplied_bucket and supplied_bucket != uri_bucket:
-                return build_tool_error(
-                    resolved_source_version=revision,
-                    code="S3_LOCATION_CONFLICT",
-                    message=(
-                        "s3_bucket conflicts with the bucket contained "
-                        "in s3_uri."
-                    ),
-                )
-
-            if supplied_key and supplied_key != uri_key:
-                return build_tool_error(
-                    resolved_source_version=revision,
-                    code="S3_LOCATION_CONFLICT",
-                    message=(
-                        "s3_key conflicts with the object key contained "
-                        "in s3_uri."
-                    ),
-                )
-
-            supplied_bucket = uri_bucket
-            supplied_key = uri_key
-
-        if not supplied_bucket or not supplied_key:
-            return build_tool_error(
-                resolved_source_version=revision,
-                code="S3_ARTIFACT_LOCATION_REQUIRED",
-                message=(
-                    "The exact expected S3 artifact location is mandatory. "
-                    "Provide either s3_bucket + s3_key or a complete s3_uri."
-                ),
-            )
 
         # =====================================================================
         # 4. CREATE AWS CLIENTS
@@ -1260,6 +1307,8 @@ class CIArtifactValidationTool(BaseTool):
         )
 
 
+# =============================================================================
+# END
 # =============================================================================
 # END
 # =============================================================================

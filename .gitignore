@@ -1,0 +1,86 @@
+# ============================================
+# SECRETS & CREDENTIALS (CRITICAL)
+# ============================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials
+credentials.*
+secrets.*
+config/local.json
+config/production.json
+config/secrets.json
+.aws/
+aws-credentials
+
+# ============================================
+# PYTHON
+# ============================================
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ============================================
+# NODE.JS
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-error.log*
+dist/
+
+# ============================================
+# IDE & EDITORS
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ============================================
+# PROJECT ARTIFACTS
+# ============================================
+ecr_inventory.json
+aws_inventory.json
+*.inventory.json
+ci-failure/__pycache__
+aws_inventory.py
+
+
+# ============================================
+# LOGS
+# ============================================
+*.log
+logs/
+
+# ============================================
+# AAVA TOOL (LOCAL STATE)
+# ============================================
+.aava/sessions/
+.aava/file-history/
+.aava/.codeindex/
+
+# ============================================
+# PLAYWRIGHT / TESTING
+# ============================================
+playwright-report/
+test-results/
+playwright/.cache/
+
+# ============================================
+# TEMPORARY FILES
+# ============================================
+*.tmp
+*.bak
