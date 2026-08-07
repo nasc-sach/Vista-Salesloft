@@ -255,10 +255,14 @@ def parse_ecr_repository_from_uri(ecr_uri: str) -> Optional[str]:
 
 def parse_codebuild_output(codebuild_json: str) -> Dict[str, Any]:
     """
-    Parse CodeBuildStatusTool JSON output to extract:
+    Parse CodeBuildStatusTool JSON output with fallback paths.
+    Handles both new metadata structure and legacy build structure.
+    
+    Extracts:
     - resolved_source_version
     - S3 artifact bucket and key (from ARN)
     - Backend and frontend ECR repository names (from environment variables)
+    - AWS region
 
     Returns dict with extracted values or error information.
     """
@@ -268,17 +272,46 @@ def parse_codebuild_output(codebuild_json: str) -> Dict[str, Any]:
     except json.JSONDecodeError as exc:
         return {"error": f"Invalid JSON: {exc}"}
 
+    # Try metadata path first (new structure from fixed Tool 1)
     metadata = data.get("metadata", {})
+    
+    # Fallback to build/source/artifacts paths (old structure)
+    if not metadata:
+        build_data = data.get("build", {})
+        source_data = data.get("source", {})
+        artifacts_data = data.get("artifacts", {})
+        env_data = data.get("environment", {})
+    else:
+        build_data = metadata
+        source_data = metadata
+        artifacts_data = metadata.get("artifacts", {})
+        env_data = metadata.get("environment", {})
 
-    resolved_source_version = metadata.get("resolved_source_version")
+    # Extract resolved_source_version with fallbacks
+    resolved_source_version = (
+        metadata.get("resolved_source_version") or
+        source_data.get("resolved_source_version") or
+        build_data.get("resolved_source_version")
+    )
 
-    # Parse S3 artifact location from ARN
-    artifacts = metadata.get("artifacts", {})
-    s3_arn = artifacts.get("location", "")
-    s3_parsed = parse_s3_arn(s3_arn)
+    # Parse S3 artifact with fallbacks
+    s3_location = (
+        artifacts_data.get("location") or
+        artifacts_data.get("primary_artifact", {}).get("location") or
+        ""
+    )
+    s3_parsed = parse_s3_arn(s3_location)
+
+    # Extract region from multiple possible locations
+    region = (
+        metadata.get("aws_region") or
+        data.get("retrieval_metadata", {}).get("aws_region") or
+        # Extract from build ARN as last resort
+        (build_data.get("build_arn", "").split(":")[3] if ":" in build_data.get("build_arn", "") and len(build_data.get("build_arn", "").split(":")) > 3 else None)
+    )
 
     # Parse ECR repositories from environment variables
-    env_vars = metadata.get("environment", {}).get("environmentVariables", [])
+    env_vars = env_data.get("environmentVariables", []) or []
     backend_repo = None
     frontend_repo = None
 
@@ -297,6 +330,7 @@ def parse_codebuild_output(codebuild_json: str) -> Dict[str, Any]:
         "s3_key": s3_parsed.get("key"),
         "backend_repository": backend_repo,
         "frontend_repository": frontend_repo,
+        "aws_region": region,
     }
 
 
@@ -1034,15 +1068,40 @@ class CIArtifactValidationTool(BaseTool):
         # 4. CREATE AWS CLIENTS
         # =====================================================================
 
+        # Extract region from parsed CodeBuild output
+        codebuild_region = parsed.get("aws_region")
+
+        if not codebuild_region:
+            logger.warning(
+                "AWS region not found in CodeBuild output, using default fallback."
+            )
+
         try:
             logger.info(
                 "Creating AWS ECR and S3 clients."
             )
 
-            session = boto3.session.Session()
+            # Use explicit region from CodeBuild output or fallback
+            region = codebuild_region or "eu-north-1"
+            session = boto3.session.Session(region_name=region)
+            
+            # Verify region was set
+            actual_region = session.region_name
+            if not actual_region:
+                return build_tool_error(
+                    resolved_source_version=revision,
+                    code="AWS_REGION_NOT_AVAILABLE",
+                    message=(
+                        "AWS region could not be determined from CodeBuild output or environment. "
+                        "Ensure Tool 1 output includes aws_region in metadata."
+                    ),
+                )
 
-            region = session.region_name
+            logger.info(
+                "Using AWS region: %s", region
+            )
 
+            # Clients inherit region from session
             ecr_client = session.client("ecr")
             s3_client = session.client("s3")
 

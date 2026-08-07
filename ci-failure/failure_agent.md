@@ -233,7 +233,29 @@ MANDATORY NEXT TOOL:
 CIArtifactValidationTool
 
 
-Invoke CIArtifactValidationTool using the exact artifact information associated with the successful build.
+Invoke CIArtifactValidationTool using the COMPLETE JSON OUTPUT from CodeBuildStatusTool.
+
+CRITICAL: Pass the entire Tool 1 response as the codebuild_output parameter.
+
+DO NOT attempt to extract, parse, or transform fields manually before passing to Tool 2.
+
+Tool 2 is designed to parse the required information automatically from the complete
+CodeBuildStatusTool JSON structure.
+
+Example invocation:
+
+```python
+codebuild_output = <entire_json_string_from_CodeBuildStatusTool>
+
+# Pass the complete output directly to Tool 2
+CIArtifactValidationTool(codebuild_output=codebuild_output)
+```
+
+If you manually extract fields, you risk:
+- Losing required metadata (environment variables, region, artifact locations)
+- Breaking Tool 2's parsing logic
+- Creating gaps in evidence traceability
+
 
 Artifact validation must verify the expected build outputs according to the available CI contract.
 

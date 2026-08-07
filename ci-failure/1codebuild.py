@@ -101,7 +101,7 @@ KNOWN_PHASE_TYPES = {
 # use AWS IAM roles, environment variables, or secure secret management systems.
 AWS_ACCESS_KEY_ID = "PLACEHOLDER_ACCESS_KEY_ID"
 AWS_SECRET_ACCESS_KEY = "PLACEHOLDER_SECRET_ACCESS_KEY"
-AWS_REGION = "us-east-1"
+AWS_REGION = "eu-north-1"
 
 # Note: Replace the PLACEHOLDER values above with actual AWS credentials.
 # This approach is NOT recommended for production use due to security risks:
@@ -481,18 +481,28 @@ def extract_artifact_information(build: Dict[str, Any]) -> Dict[str, Any]:
 
 def extract_environment_information(build: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Extract non-secret CodeBuild environment metadata.
+    Extract CodeBuild environment metadata including environment variables.
 
-    Environment variable values are intentionally omitted.
+    Environment variables (name, value, type) are included for artifact
+    tagging and verification purposes.
     """
 
     environment = build.get("environment", {}) or {}
+    
+    env_vars = []
+    for var in environment.get("environmentVariables", []) or []:
+        env_vars.append({
+            "name": var.get("name"),
+            "value": var.get("value"),
+            "type": var.get("type"),
+        })
 
     return {
         "compute_type": environment.get("type"),
         "image": environment.get("image"),
         "privileged_mode": environment.get("privilegedMode"),
         "image_pull_credentials_type": environment.get("imagePullCredentialsType"),
+        "environmentVariables": env_vars,
     }
 
 
@@ -964,6 +974,35 @@ class CodeBuildStatusTool(BaseTool):
         try:
             output = {
                 "status": "SUCCESS",
+                
+                # Top-level metadata for Tool 2 compatibility
+                "metadata": {
+                    "build_id": actual_build_id,
+                    "build_arn": build_arn,
+                    "project_name": project_name,
+                    "build_status": build_status,
+                    "build_number": build.get("buildNumber"),
+                    "resolved_source_version": source_info.get("resolved_source_version"),
+                    "source_version": source_info.get("source_version"),
+                    "current_phase": current_phase,
+                    "start_time": datetime_to_iso(start_time),
+                    "end_time": datetime_to_iso(end_time),
+                    "duration_seconds": duration_seconds,
+                    "aws_region": AWS_REGION,
+                    
+                    "artifacts": {
+                        "location": artifact_info["primary_artifact"]["location"],
+                        "sha256sum": artifact_info["primary_artifact"]["sha256sum"],
+                        "md5sum": artifact_info["primary_artifact"]["md5sum"],
+                    },
+                    
+                    "environment": {
+                        "type": environment_info.get("compute_type"),
+                        "image": environment_info.get("image"),
+                        "privileged_mode": environment_info.get("privileged_mode"),
+                        "environmentVariables": environment_info.get("environmentVariables", []),
+                    },
+                },
 
                 "build": {
                     "build_id": actual_build_id,
@@ -994,6 +1033,7 @@ class CodeBuildStatusTool(BaseTool):
                 "retrieval_metadata": {
                     "request_duration_ms": request_duration_ms,
                     "timestamp": utc_now_iso(),
+                    "aws_region": AWS_REGION,
                 },
 
                 "tool": {
@@ -1001,219 +1041,6 @@ class CodeBuildStatusTool(BaseTool):
                     "version": TOOL_VERSION,
                 },
             }
-
-            return json.dumps(output, indent=2, default=str)
-
-        except Exception as error:
-            logger.exception("Failed to serialize output payload.")
-
-            return build_error_response(
-                build_id=normalized_build_id,
-                error_type="SERIALIZATION_ERROR",
-                error_code="OUTPUT_SERIALIZATION_FAILURE",
-                message=sanitize_error_message(error),
-                retryable=False,
-            )
-                )
-
-                decision_reason = (
-                    "CodeBuild execution succeeded. Overall CI success has "
-                    "not been established because backend ECR image, frontend "
-                    "ECR image, S3 artifact, and source-revision correlation "
-                    "must still be verified."
-                )
-
-            elif build_status in TERMINAL_FAILURE_STATUSES:
-                recommended_next_action = (
-                    "RETRIEVE_CODEBUILD_FAILURE_LOGS"
-                )
-
-                decision_reason = (
-                    "CodeBuild reached a terminal non-success state. "
-                    "Retrieve authoritative build logs before diagnosing "
-                    "the failure."
-                )
-
-            elif build_status == "IN_PROGRESS":
-                recommended_next_action = (
-                    "WAIT_OR_EVALUATE_TIMEOUT_POLICY"
-                )
-
-                decision_reason = (
-                    "CodeBuild execution is still non-terminal. "
-                    "Do not forward the build downstream."
-                )
-
-            else:
-                recommended_next_action = (
-                    "BLOCK_AND_REVIEW_UNKNOWN_BUILD_STATUS"
-                )
-
-                decision_reason = (
-                    "CodeBuild returned an unrecognized or unavailable "
-                    "status. Fail closed and do not forward downstream."
-                )
-
-            request_duration_ms = round(
-                (time.monotonic() - request_started) * 1000,
-                3,
-            )
-
-            output = {
-                "schema_version": "1.0",
-
-                "tool": {
-                    "name": TOOL_NAME,
-                    "version": TOOL_VERSION,
-                    "operation": "GET_CODEBUILD_STATUS",
-                    "read_only": True,
-                },
-
-                "query": {
-                    "requested_build_id": normalized_build_id,
-                },
-
-                "retrieval": {
-                    "status": "SUCCESS",
-                    "timestamp": utc_now_iso(),
-                    "request_duration_ms": request_duration_ms,
-                    "authoritative_source": "AWS CodeBuild",
-                },
-
-                "build": {
-                    "build_id": actual_build_id,
-                    "build_arn": build_arn,
-                    "project_name": project_name,
-
-                    "build_status": build_status,
-
-                    "status_recognized": (
-                        status_classification[
-                            "status_recognized"
-                        ]
-                    ),
-
-                    "is_terminal": (
-                        status_classification["is_terminal"]
-                    ),
-
-                    "is_codebuild_success": (
-                        status_classification[
-                            "is_codebuild_success"
-                        ]
-                    ),
-
-                    "is_codebuild_failure": (
-                        status_classification[
-                            "is_codebuild_failure"
-                        ]
-                    ),
-
-                    "current_phase": current_phase,
-
-                    "start_time": datetime_to_iso(start_time),
-                    "end_time": datetime_to_iso(end_time),
-                    "duration_seconds": duration_seconds,
-
-                    "initiator": build.get("initiator"),
-
-                    "build_complete": build.get("buildComplete"),
-
-                    "queued_timeout_in_minutes": (
-                        build.get("queuedTimeoutInMinutes")
-                    ),
-
-                    "build_timeout_in_minutes": (
-                        build.get("timeoutInMinutes")
-                    ),
-                },
-
-                "source": source_info,
-
-                "phases": {
-                    "current_phase": current_phase,
-                    "all_phases": processed_phases,
-                    "failed_phases": failed_phases,
-                    "total_phases_observed": len(processed_phases),
-                },
-
-                "logs": logs_info,
-
-                "codebuild_artifact_metadata": artifact_info,
-
-                "environment": environment_info,
-
-                "decision_support": {
-                    "authoritative_build_status_available": (
-                        build_status is not None
-                    ),
-
-                    "requires_artifact_validation": (
-                        status_classification[
-                            "requires_artifact_validation"
-                        ]
-                    ),
-
-                    "requires_failure_log_analysis": (
-                        status_classification[
-                            "requires_failure_log_analysis"
-                        ]
-                    ),
-
-                    # Deliberately false here.
-                    # Only CIArtifactValidationTool + CI gate may establish it.
-                    "overall_ci_success_determined": False,
-
-                    # Status tool alone NEVER authorizes promotion.
-                    "promotion_allowed": False,
-
-                    "recommended_next_action": (
-                        recommended_next_action
-                    ),
-
-                    "reason": decision_reason,
-                },
-
-                "unknown_areas": [],
-            }
-
-            # -----------------------------------------------------------------
-            # 6. Explicit unknown preservation
-            # -----------------------------------------------------------------
-
-            if build_status is None:
-                output["unknown_areas"].append(
-                    "AWS CodeBuild did not provide buildStatus."
-                )
-
-            elif build_status not in KNOWN_BUILD_STATUSES:
-                output["unknown_areas"].append(
-                    "AWS CodeBuild returned an unrecognized build status: "
-                    f"{build_status}"
-                )
-
-            if source_info.get("resolved_source_version") is None:
-                output["unknown_areas"].append(
-                    "resolved_source_version was not provided by CodeBuild. "
-                    "Immutable artifact correlation cannot yet be established."
-                )
-
-            if current_phase is None:
-                output["unknown_areas"].append(
-                    "Current CodeBuild phase could not be determined."
-                )
-
-            if logs_info.get("group_name") is None:
-                output["unknown_areas"].append(
-                    "Primary CloudWatch log group was not available in "
-                    "CodeBuild metadata."
-                )
-
-            if logs_info.get("stream_name") is None:
-                output["unknown_areas"].append(
-                    "Primary CloudWatch log stream was not available in "
-                    "CodeBuild metadata."
-                )
 
             logger.info(
                 "CodeBuild status retrieval successful | "
