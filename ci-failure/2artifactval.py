@@ -74,6 +74,15 @@ DEFAULT_FRONTEND_REPOSITORY = "salesloft-frontend"
 DEFAULT_S3_BUCKET = "salesloft-codedeploy-artifacts"
 DEFAULT_S3_KEY = "builds/latest/salesloft.zip"
 
+# Hardcoded AWS configuration
+DEFAULT_AWS_REGION = "eu-north-1"
+DEFAULT_AWS_REGISTRY_ID = "231733667519"
+
+# WARNING: Hardcoded credentials are a security risk in production.
+# Consider using IAM roles, environment variables, or AWS credential files instead.
+DEFAULT_AWS_ACCESS_KEY_ID = "YOUR_ACCESS_KEY_ID"
+DEFAULT_AWS_SECRET_ACCESS_KEY = "YOUR_SECRET_ACCESS_KEY"
+
 VERIFIED = "VERIFIED"
 MISSING = "MISSING"
 MISMATCH = "MISMATCH"
@@ -309,6 +318,14 @@ def parse_codebuild_output(codebuild_json: str) -> Dict[str, Any]:
         # Extract from build ARN as last resort
         (build_data.get("build_arn", "").split(":")[3] if ":" in build_data.get("build_arn", "") and len(build_data.get("build_arn", "").split(":")) > 3 else None)
     )
+    
+    # If all extraction paths failed, use hardcoded default region
+    if not region:
+        logger.info(
+            "AWS region not found in CodeBuild output, will use hardcoded default: %s",
+            DEFAULT_AWS_REGION
+        )
+        region = DEFAULT_AWS_REGION
 
     # Parse ECR repositories from environment variables
     env_vars = env_data.get("environmentVariables", []) or []
@@ -478,17 +495,14 @@ def validate_ecr_image(
         result["repository_uri"] = repository_uri
 
         # ---------------------------------------------------------------------
-        # 2. Exact image tag lookup
+        # 2. List images with the expected tag
         # ---------------------------------------------------------------------
 
         response = client.describe_images(
             repositoryName=repository_name,
             imageIds=[
-                {
-                    "imageTag": expected_tag
-                }
+                {"imageTag": expected_tag}
             ],
-            maxResults=1,
         )
 
         image_details = response.get("imageDetails", []) or []
@@ -496,10 +510,9 @@ def validate_ecr_image(
         if not image_details:
             result["status"] = MISSING
             result["error"] = {
-                "code": "ECR_IMAGE_TAG_NOT_FOUND",
+                "code": "ECR_IMAGE_NOT_FOUND",
                 "message": (
-                    f"Expected image '{repository_name}:{expected_tag}' "
-                    "was not found."
+                    f"ECR image tag '{expected_tag}' not found in '{repository_name}'."
                 ),
             }
 
@@ -512,20 +525,18 @@ def validate_ecr_image(
 
         expected_tag_observed = expected_tag in image_tags
 
-        result["image_digest"] = digest
         result["image_tags"] = image_tags
+        result["image_digest"] = digest
         result["image_pushed_at"] = datetime_to_iso(
             image.get("imagePushedAt")
         )
-        result["image_size_bytes"] = (
-            image.get("imageSizeInBytes")
-        )
+        result["image_size_bytes"] = image.get("imageSizeInBytes")
 
-        if repository_uri:
-            result["image_uri"] = (
-                f"{repository_uri}:{expected_tag}"
-            )
-        else:
+        # ---------------------------------------------------------------------
+        # 3. Build complete image URI
+        # ---------------------------------------------------------------------
+
+        if registry_id and region:
             result["image_uri"] = build_ecr_uri(
                 registry_id=registry_id,
                 region=region,
@@ -533,105 +544,126 @@ def validate_ecr_image(
                 tag=expected_tag,
             )
 
-        result["correlation"] = {
-            "method": "EXACT_ECR_IMAGE_TAG",
-            "expected_revision": expected_tag,
-            "observed_expected_tag": expected_tag_observed,
-            "verified": expected_tag_observed,
-        }
+        # ---------------------------------------------------------------------
+        # 4. Determine verification result
+        # ---------------------------------------------------------------------
 
-        if not expected_tag_observed:
-            # Defensive case. AWS describe_images was queried by exact tag,
-            # therefore this should normally not occur.
-            result["status"] = MISMATCH
-            result["verified"] = False
+        if expected_tag_observed:
+            result["status"] = VERIFIED
+            result["verified"] = True
+            result["correlation"]["observed_expected_tag"] = True
+            result["correlation"]["verified"] = True
+
+            logger.info(
+                "ECR image VERIFIED | repository=%s | tag=%s | digest=%s",
+                repository_name,
+                expected_tag,
+                digest,
+            )
+        else:
+            # Should not happen: we requested the tag specifically
+            result["status"] = UNKNOWN
             result["error"] = {
-                "code": "ECR_TAG_CORRELATION_MISMATCH",
+                "code": "ECR_TAG_MISMATCH",
                 "message": (
-                    "AWS returned image metadata, but the expected immutable "
-                    "tag was not present in imageTags."
+                    f"Tag '{expected_tag}' returned by API but not in image metadata."
                 ),
             }
 
-            return result
-
-        result["status"] = VERIFIED
-        result["verified"] = True
-
-        logger.info(
-            "ECR image verified | repository=%s | tag=%s | digest=%s",
-            repository_name,
-            expected_tag,
-            digest,
-        )
+            logger.warning(
+                "ECR image UNKNOWN | repository=%s | tag=%s | digest=%s",
+                repository_name,
+                expected_tag,
+                digest,
+            )
 
         return result
 
     except ClientError as exc:
         code = aws_error_code(exc)
-        message = aws_error_message(exc)
+        message = sanitize_message(aws_error_message(exc))
 
-        logger.warning(
-            "ECR ClientError | repository=%s | tag=%s | code=%s",
-            repository_name,
-            expected_tag,
-            code,
-        )
-
-        # RepositoryNotFoundException is deterministic absence.
         if code == "RepositoryNotFoundException":
             result["status"] = MISSING
             result["error"] = {
-                "code": code,
-                "message": sanitize_message(message),
+                "code": "ECR_REPOSITORY_NOT_FOUND",
+                "message": (
+                    f"ECR repository '{repository_name}' does not exist."
+                ),
             }
 
-            return result
+            logger.warning(
+                "ECR repository NOT FOUND | repository=%s",
+                repository_name,
+            )
 
-        # ImageNotFoundException means the exact immutable image is absent.
-        if code == "ImageNotFoundException":
+        elif code == "ImageNotFoundException":
             result["status"] = MISSING
             result["error"] = {
-                "code": code,
-                "message": sanitize_message(message),
+                "code": "ECR_IMAGE_NOT_FOUND",
+                "message": (
+                    f"ECR image tag '{expected_tag}' not found in '{repository_name}'."
+                ),
             }
 
-            return result
+            logger.warning(
+                "ECR image NOT FOUND | repository=%s | tag=%s",
+                repository_name,
+                expected_tag,
+            )
 
-        # Permission, throttling, network-adjacent AWS failures etc. do NOT
-        # prove absence. Preserve UNKNOWN.
-        result["status"] = UNKNOWN
-        result["error"] = {
-            "code": code or "AWS_CLIENT_ERROR",
-            "message": sanitize_message(message or str(exc)),
-        }
+        else:
+            result["status"] = UNKNOWN
+            result["error"] = {
+                "code": code or "ECR_CLIENT_ERROR",
+                "message": message,
+            }
 
-        return result
-
-    except EndpointConnectionError as exc:
-        logger.exception(
-            "Unable to connect to ECR endpoint."
-        )
-
-        result["status"] = UNKNOWN
-        result["error"] = {
-            "code": "ECR_ENDPOINT_CONNECTION_FAILED",
-            "message": sanitize_message(exc),
-        }
+            logger.exception(
+                "ECR validation ClientError | code=%s",
+                code,
+            )
 
         return result
 
-    except Exception as exc:
-        logger.exception(
-            "Unexpected ECR validation error."
-        )
-
+    except NoCredentialsError:
         result["status"] = UNKNOWN
         result["error"] = {
-            "code": "ECR_VALIDATION_ERROR",
-            "message": sanitize_message(exc),
+            "code": "AWS_NO_CREDENTIALS",
+            "message": "AWS credentials not configured.",
         }
 
+        logger.exception("AWS credentials missing")
+        return result
+
+    except PartialCredentialsError:
+        result["status"] = UNKNOWN
+        result["error"] = {
+            "code": "AWS_PARTIAL_CREDENTIALS",
+            "message": "AWS credentials incomplete.",
+        }
+
+        logger.exception("AWS credentials incomplete")
+        return result
+
+    except EndpointConnectionError:
+        result["status"] = UNKNOWN
+        result["error"] = {
+            "code": "AWS_ENDPOINT_CONNECTION_ERROR",
+            "message": "Cannot connect to AWS ECR endpoint.",
+        }
+
+        logger.exception("AWS endpoint connection failed")
+        return result
+
+    except Exception:
+        result["status"] = UNKNOWN
+        result["error"] = {
+            "code": "UNEXPECTED_ERROR",
+            "message": "Unexpected error during ECR validation.",
+        }
+
+        logger.exception("Unexpected ECR validation error")
         return result
 
 
@@ -641,55 +673,26 @@ def validate_ecr_image(
 
 def validate_s3_artifact(
     client: Any,
-    bucket: Optional[str],
-    key: Optional[str],
+    bucket: str,
+    key: str,
 ) -> Dict[str, Any]:
     """
-    Verify the exact expected S3 object using HeadObject.
+    Validate the existence of an S3 object.
 
-    This checks exact object identity.
-
-    It does NOT:
-        - search for similar filenames
-        - choose newest object
-        - scan a prefix and guess
-        - treat bucket existence as artifact existence
+    Returns VERIFIED, MISSING, or UNKNOWN.
     """
 
     result: Dict[str, Any] = {
         "bucket": bucket,
         "key": key,
-        "uri": (
-            f"s3://{bucket}/{key}"
-            if bucket and key
-            else None
-        ),
         "status": UNKNOWN,
         "verified": False,
+        "s3_uri": f"s3://{bucket}/{key}",
         "etag": None,
-        "version_id": None,
-        "content_length_bytes": None,
+        "size_bytes": None,
         "last_modified": None,
-        "content_type": None,
-        "metadata": {},
-        "correlation": {
-            "method": "EXACT_S3_OBJECT_KEY",
-            "verified": False,
-        },
         "error": None,
     }
-
-    if not bucket or not key:
-        result["status"] = UNKNOWN
-        result["error"] = {
-            "code": "S3_ARTIFACT_LOCATION_INCOMPLETE",
-            "message": (
-                "Both S3 bucket and exact object key are required for "
-                "artifact verification."
-            ),
-        }
-
-        return result
 
     try:
         logger.info(
@@ -698,196 +701,171 @@ def validate_s3_artifact(
             key,
         )
 
+        # ---------------------------------------------------------------------
+        # HEAD object to check existence
+        # ---------------------------------------------------------------------
+
         response = client.head_object(
             Bucket=bucket,
             Key=key,
         )
 
         result["etag"] = response.get("ETag")
-        result["version_id"] = response.get("VersionId")
-        result["content_length_bytes"] = (
-            response.get("ContentLength")
-        )
+        result["size_bytes"] = response.get("ContentLength")
         result["last_modified"] = datetime_to_iso(
             response.get("LastModified")
         )
-        result["content_type"] = response.get("ContentType")
-
-        # User-defined S3 metadata is generally safe, but it may theoretically
-        # contain sensitive information. We preserve keys/values returned by
-        # AWS because artifact correlation may depend on commit/build metadata.
-        #
-        # Do not place secrets in S3 object metadata.
-        result["metadata"] = response.get("Metadata", {}) or {}
 
         result["status"] = VERIFIED
         result["verified"] = True
 
-        result["correlation"] = {
-            "method": "EXACT_S3_OBJECT_KEY",
-            "verified": True,
-        }
-
         logger.info(
-            "S3 artifact verified | bucket=%s | key=%s",
+            "S3 artifact VERIFIED | bucket=%s | key=%s | etag=%s | size=%s",
             bucket,
             key,
+            result["etag"],
+            result["size_bytes"],
         )
 
         return result
 
     except ClientError as exc:
         code = aws_error_code(exc)
-        message = aws_error_message(exc)
+        message = sanitize_message(aws_error_message(exc))
 
-        logger.warning(
-            "S3 ClientError | bucket=%s | key=%s | code=%s",
-            bucket,
-            key,
-            code,
-        )
-
-        # Depending on IAM/configuration, HeadObject can report 404/NoSuchKey.
-        if code in {
-            "404",
-            "NoSuchKey",
-            "NotFound",
-            "NoSuchBucket",
-        }:
+        if code == "404" or code == "NoSuchKey":
             result["status"] = MISSING
             result["error"] = {
-                "code": code,
-                "message": sanitize_message(message),
+                "code": "S3_OBJECT_NOT_FOUND",
+                "message": (
+                    f"S3 object not found: s3://{bucket}/{key}"
+                ),
             }
 
-            return result
+            logger.warning(
+                "S3 artifact NOT FOUND | bucket=%s | key=%s",
+                bucket,
+                key,
+            )
 
-        # 403/AccessDenied is UNKNOWN, not MISSING.
-        result["status"] = UNKNOWN
-        result["error"] = {
-            "code": code or "AWS_CLIENT_ERROR",
-            "message": sanitize_message(message or str(exc)),
-        }
+        elif code == "403" or code == "AccessDenied":
+            result["status"] = UNKNOWN
+            result["error"] = {
+                "code": "S3_ACCESS_DENIED",
+                "message": (
+                    f"Access denied to S3 object: s3://{bucket}/{key}"
+                ),
+            }
+
+            logger.warning(
+                "S3 artifact ACCESS DENIED | bucket=%s | key=%s",
+                bucket,
+                key,
+            )
+
+        else:
+            result["status"] = UNKNOWN
+            result["error"] = {
+                "code": code or "S3_CLIENT_ERROR",
+                "message": message,
+            }
+
+            logger.exception(
+                "S3 validation ClientError | code=%s",
+                code,
+            )
 
         return result
 
-    except EndpointConnectionError as exc:
-        logger.exception(
-            "Unable to connect to S3 endpoint."
-        )
-
+    except NoCredentialsError:
         result["status"] = UNKNOWN
         result["error"] = {
-            "code": "S3_ENDPOINT_CONNECTION_FAILED",
-            "message": sanitize_message(exc),
+            "code": "AWS_NO_CREDENTIALS",
+            "message": "AWS credentials not configured.",
         }
 
+        logger.exception("AWS credentials missing")
         return result
 
-    except Exception as exc:
-        logger.exception(
-            "Unexpected S3 artifact validation error."
-        )
-
+    except PartialCredentialsError:
         result["status"] = UNKNOWN
         result["error"] = {
-            "code": "S3_VALIDATION_ERROR",
-            "message": sanitize_message(exc),
+            "code": "AWS_PARTIAL_CREDENTIALS",
+            "message": "AWS credentials incomplete.",
         }
 
+        logger.exception("AWS credentials incomplete")
+        return result
+
+    except EndpointConnectionError:
+        result["status"] = UNKNOWN
+        result["error"] = {
+            "code": "AWS_ENDPOINT_CONNECTION_ERROR",
+            "message": "Cannot connect to AWS S3 endpoint.",
+        }
+
+        logger.exception("AWS endpoint connection failed")
+        return result
+
+    except Exception:
+        result["status"] = UNKNOWN
+        result["error"] = {
+            "code": "UNEXPECTED_ERROR",
+            "message": "Unexpected error during S3 validation.",
+        }
+
+        logger.exception("Unexpected S3 validation error")
         return result
 
 
 # =============================================================================
-# FINAL CLASSIFICATION
+# VALIDATION LOGIC
 # =============================================================================
 
 def determine_validation_result(
     backend: Dict[str, Any],
     frontend: Dict[str, Any],
     s3_artifact: Dict[str, Any],
-) -> Dict[str, Any]:
+) -> str:
     """
-    Determine aggregate artifact-validation state.
+    Determine overall validation result based on individual artifact checks.
 
-    Precedence:
+    VERIFIED:
+        All three artifacts verified.
 
-        UNKNOWN
-            Tool/AWS evidence could not establish truth.
+    MISSING:
+        At least one artifact is missing (and none are unknown).
 
-        MISSING / MISMATCH
-            Evidence deterministically establishes invalid artifact state.
+    UNKNOWN:
+        At least one artifact is unknown (could not be confirmed).
 
-        VERIFIED
-            Every mandatory artifact was positively verified.
-
-    IMPORTANT:
-        VERIFIED here means artifact validation succeeded.
-
-        Final CI_SUCCESS still belongs to the CI Failure Handling Agent,
-        which must combine this result with authoritative CodeBuild status.
+    This implements a fail-closed policy:
+        Uncertainty prevents approval.
     """
 
-    statuses = [
-        backend.get("status"),
-        frontend.get("status"),
-        s3_artifact.get("status"),
-    ]
+    statuses = {backend["status"], frontend["status"], s3_artifact["status"]}
 
-    if UNKNOWN in statuses or NOT_CHECKED in statuses:
-        return {
-            "status": "UNKNOWN",
-            "all_mandatory_artifacts_verified": False,
-            "artifact_validation_success": False,
-            "promotion_allowed": False,
-            "reason": (
-                "One or more mandatory artifacts could not be "
-                "authoritatively verified."
-            ),
-        }
+    if statuses == {VERIFIED}:
+        logger.info("All artifacts VERIFIED.")
+        return VERIFIED
 
-    if MISSING in statuses or MISMATCH in statuses:
-        return {
-            "status": "INVALID",
-            "all_mandatory_artifacts_verified": False,
-            "artifact_validation_success": False,
-            "promotion_allowed": False,
-            "reason": (
-                "One or more mandatory CI artifacts are missing or do not "
-                "match the expected immutable artifact identity."
-            ),
-        }
+    if UNKNOWN in statuses:
+        logger.warning(
+            "At least one artifact status is UNKNOWN, validation cannot be confirmed."
+        )
+        return UNKNOWN
 
-    if all(status == VERIFIED for status in statuses):
-        return {
-            "status": "VERIFIED",
-            "all_mandatory_artifacts_verified": True,
-            "artifact_validation_success": True,
+    if MISSING in statuses:
+        logger.warning("At least one artifact is MISSING.")
+        return MISSING
 
-            # This tool alone still does not authorize promotion.
-            "promotion_allowed": False,
-
-            "reason": (
-                "All mandatory artifacts were positively verified. "
-                "The CI agent must combine this result with authoritative "
-                "CodeBuild SUCCEEDED state before declaring CI_SUCCESS."
-            ),
-        }
-
-    return {
-        "status": "UNKNOWN",
-        "all_mandatory_artifacts_verified": False,
-        "artifact_validation_success": False,
-        "promotion_allowed": False,
-        "reason": (
-            "Artifact state could not be mapped to a supported "
-            "deterministic validation result."
-        ),
-    }
+    # Fallback: should not reach here
+    logger.error("Unexpected artifact validation state: %s", statuses)
+    return UNKNOWN
 
 
 # =============================================================================
-# TOOL-LEVEL ERROR RESPONSE
+# ERROR HANDLING
 # =============================================================================
 
 def build_tool_error(
@@ -895,68 +873,50 @@ def build_tool_error(
     code: str,
     message: str,
 ) -> str:
+    """Build structured error JSON response."""
 
     payload = {
-        "schema_version": "1.0",
-
-        "tool": {
-            "name": TOOL_NAME,
-            "version": TOOL_VERSION,
-        },
-
-        "retrieval": {
-            "status": "ERROR",
-            "timestamp": utc_now_iso(),
-        },
-
-        "input": {
-            "resolved_source_version": resolved_source_version,
-        },
-
+        "tool_name": TOOL_NAME,
+        "tool_version": TOOL_VERSION,
+        "timestamp": utc_now_iso(),
+        "resolved_source_version": resolved_source_version,
         "validation": {
-            "status": "UNKNOWN",
-            "all_mandatory_artifacts_verified": False,
-            "artifact_validation_success": False,
-            "promotion_allowed": False,
+            "status": UNKNOWN,
+            "verified": False,
+            "backend_image": NOT_CHECKED,
+            "frontend_image": NOT_CHECKED,
+            "s3_artifact": NOT_CHECKED,
         },
-
         "error": {
             "code": code,
-            "message": sanitize_message(message),
+            "message": message,
         },
-
-        "unknown_areas": [
-            "Mandatory CI artifact verification was not completed."
-        ],
     }
 
-    return json.dumps(
-        payload,
-        indent=2,
-        ensure_ascii=False,
-        default=str,
-    )
+    return json.dumps(payload, indent=2, default=str)
 
 
 # =============================================================================
-# MAIN TOOL
+# TOOL
 # =============================================================================
 
 class CIArtifactValidationTool(BaseTool):
     """
-    Read-only mandatory CI artifact verification tool.
+    Validates CI artifacts for a specific source revision using CodeBuild metadata.
+
+    Accepts CodeBuildStatusTool JSON output and validates:
+    - Backend ECR image
+    - Frontend ECR image
+    - S3 deployment artifact
     """
 
-    name: str = TOOL_NAME
+    name: str = "ci_artifact_validation_tool"
 
     description: str = (
-        "Verifies mandatory CI artifacts for an exact immutable source "
-        "revision extracted from CodeBuildStatusTool output. It validates "
-        "the backend ECR image, frontend ECR image, and S3 artifact. "
-        "All artifact locations and repository names are extracted from "
-        "the CodeBuild output. The tool never falls back to ':latest', "
-        "never retags images, never modifies artifacts, and never declares "
-        "overall CI success."
+        "Validate mandatory CI artifacts (backend image, frontend image, S3 artifact) "
+        "for an exact source revision using CodeBuild metadata from CodeBuildStatusTool. "
+        "Returns VERIFIED only when all artifacts exist. Never uses fallback tags. "
+        "Fail closed: missing or uncertain artifacts prevent validation approval."
     )
 
     args_schema: Type[BaseModel] = CIArtifactValidationToolSchema
@@ -966,25 +926,22 @@ class CIArtifactValidationTool(BaseTool):
         codebuild_output: str,
     ) -> str:
 
-        started = time.monotonic()
-
-        logger.info(
-            "Starting CI artifact validation from CodeBuild output."
-        )
+        started = time.time()
 
         # =====================================================================
         # 1. PARSE CODEBUILD OUTPUT
         # =====================================================================
 
-        if not isinstance(codebuild_output, str):
-            return build_tool_error(
-                resolved_source_version=None,
-                code="INVALID_CODEBUILD_OUTPUT",
-                message=(
-                    "codebuild_output must be a non-empty string containing "
-                    "CodeBuildStatusTool JSON output."
-                ),
-            )
+        logger.info(
+            "==================== CI ARTIFACT VALIDATION START ====================\n"
+            "%s | %s | Starting validation",
+            TOOL_NAME,
+            TOOL_VERSION,
+        )
+
+        logger.info(
+            "Parsing CodeBuild output JSON to extract artifact metadata."
+        )
 
         parsed = parse_codebuild_output(codebuild_output)
 
@@ -995,10 +952,7 @@ class CIArtifactValidationTool(BaseTool):
                 message=parsed["error"],
             )
 
-        # =====================================================================
-        # 2. EXTRACT AND VALIDATE REQUIRED FIELDS
-        # =====================================================================
-
+        # Extract resolved source version
         resolved_source_version = parsed.get("resolved_source_version")
 
         if not resolved_source_version:
@@ -1006,63 +960,69 @@ class CIArtifactValidationTool(BaseTool):
                 resolved_source_version=None,
                 code="MISSING_RESOLVED_SOURCE_VERSION",
                 message=(
-                    "resolved_source_version not found in CodeBuild output."
+                    "resolved_source_version not found in CodeBuild output. "
+                    "Cannot validate artifacts without knowing the exact source revision."
                 ),
             )
 
         revision = normalize_revision(resolved_source_version)
 
-        if not revision:
-            return build_tool_error(
-                resolved_source_version=None,
-                code="INVALID_SOURCE_REVISION",
-                message=(
-                    "resolved_source_version must not be empty."
-                ),
-            )
+        logger.info(
+            "Extracted resolved_source_version: %s",
+            revision,
+        )
+
+        # =====================================================================
+        # 2. DETERMINE REPOSITORY NAMES
+        # =====================================================================
 
         backend_repository = parsed.get("backend_repository") or DEFAULT_BACKEND_REPOSITORY
         frontend_repository = parsed.get("frontend_repository") or DEFAULT_FRONTEND_REPOSITORY
 
-        backend_repository = backend_repository.strip()
-        frontend_repository = frontend_repository.strip()
-
-        if not backend_repository:
-            return build_tool_error(
-                resolved_source_version=revision,
-                code="INVALID_BACKEND_REPOSITORY",
-                message="Backend ECR repository must not be empty.",
+        if parsed.get("backend_repository"):
+            logger.info(
+                "Using backend repository from CodeBuild environment: %s",
+                backend_repository,
+            )
+        else:
+            logger.info(
+                "Using hardcoded default backend repository: %s",
+                backend_repository,
             )
 
-        if not frontend_repository:
-            return build_tool_error(
-                resolved_source_version=revision,
-                code="INVALID_FRONTEND_REPOSITORY",
-                message="Frontend ECR repository must not be empty.",
+        if parsed.get("frontend_repository"):
+            logger.info(
+                "Using frontend repository from CodeBuild environment: %s",
+                frontend_repository,
+            )
+        else:
+            logger.info(
+                "Using hardcoded default frontend repository: %s",
+                frontend_repository,
             )
 
         # =====================================================================
-        # 3. EXTRACT S3 ARTIFACT LOCATION
+        # 3. DETERMINE S3 ARTIFACT LOCATION
         # =====================================================================
 
-        supplied_bucket = parsed.get("s3_bucket") or DEFAULT_S3_BUCKET
-        supplied_key = parsed.get("s3_key") or DEFAULT_S3_KEY
+        supplied_bucket = parsed.get("s3_bucket")
+        supplied_key = parsed.get("s3_key")
 
-        logger.info(
-            "Extracted artifact metadata | revision=%s | "
-            "backend_repo=%s | frontend_repo=%s | "
-            "s3_bucket=%s | s3_key=%s",
-            revision,
-            backend_repository,
-            frontend_repository,
-            supplied_bucket,
-            supplied_key,
-        )
+        if supplied_bucket and supplied_key:
+            logger.info(
+                "Using S3 artifact location from CodeBuild output: s3://%s/%s",
+                supplied_bucket,
+                supplied_key,
+            )
+        else:
+            logger.info(
+                "S3 artifact location not found in CodeBuild output, using hardcoded defaults: s3://%s/%s",
+                DEFAULT_S3_BUCKET,
+                DEFAULT_S3_KEY,
+            )
 
-        logger.info(
-            "Using immutable source revision | revision=%s",
-            revision,
-        )
+            supplied_bucket = DEFAULT_S3_BUCKET
+            supplied_key = DEFAULT_S3_KEY
 
         # =====================================================================
         # 4. CREATE AWS CLIENTS
@@ -1071,35 +1031,28 @@ class CIArtifactValidationTool(BaseTool):
         # Extract region from parsed CodeBuild output
         codebuild_region = parsed.get("aws_region")
 
-        if not codebuild_region:
-            logger.warning(
-                "AWS region not found in CodeBuild output, using default fallback."
-            )
-
         try:
             logger.info(
                 "Creating AWS ECR and S3 clients."
             )
 
-            # Use explicit region from CodeBuild output or fallback
-            region = codebuild_region or "eu-north-1"
-            session = boto3.session.Session(region_name=region)
-            
-            # Verify region was set
-            actual_region = session.region_name
-            if not actual_region:
-                return build_tool_error(
-                    resolved_source_version=revision,
-                    code="AWS_REGION_NOT_AVAILABLE",
-                    message=(
-                        "AWS region could not be determined from CodeBuild output or environment. "
-                        "Ensure Tool 1 output includes aws_region in metadata."
-                    ),
-                )
-
-            logger.info(
-                "Using AWS region: %s", region
+            # Use explicit region from CodeBuild output or hardcoded default
+            region = codebuild_region or DEFAULT_AWS_REGION
+            session = boto3.session.Session(
+                aws_access_key_id=DEFAULT_AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=DEFAULT_AWS_SECRET_ACCESS_KEY,
+                region_name=region
             )
+            
+            # Log whether region came from CodeBuild output or hardcoded default
+            if codebuild_region:
+                logger.info(
+                    "Using AWS region from CodeBuild output: %s", region
+                )
+            else:
+                logger.info(
+                    "Using hardcoded default AWS region: %s", region
+                )
 
             # Clients inherit region from session
             ecr_client = session.client("ecr")
@@ -1107,49 +1060,40 @@ class CIArtifactValidationTool(BaseTool):
 
         except NoCredentialsError:
             logger.exception(
-                "AWS credentials unavailable."
+                "AWS credentials not configured."
             )
 
             return build_tool_error(
                 resolved_source_version=revision,
-                code="NO_AWS_CREDENTIALS",
-                message=(
-                    "AWS credentials were not available to the "
-                    "AAVA runtime."
-                ),
+                code="AWS_NO_CREDENTIALS",
+                message="AWS credentials not configured in the environment.",
             )
 
-        except PartialCredentialsError as exc:
+        except PartialCredentialsError:
             logger.exception(
-                "Partial AWS credentials."
+                "AWS credentials incomplete."
             )
 
             return build_tool_error(
                 resolved_source_version=revision,
-                code="PARTIAL_AWS_CREDENTIALS",
-                message=str(exc),
+                code="AWS_PARTIAL_CREDENTIALS",
+                message="AWS credentials incomplete in the environment.",
             )
 
-        except Exception as exc:
+        except Exception:
             logger.exception(
-                "AWS client initialization failed."
+                "Unexpected error creating AWS clients."
             )
 
             return build_tool_error(
                 resolved_source_version=revision,
-                code="AWS_CLIENT_INITIALIZATION_FAILED",
-                message=str(exc),
+                code="AWS_CLIENT_INIT_ERROR",
+                message="Failed to create AWS clients.",
             )
 
         # =====================================================================
-        # 5. VERIFY BACKEND IMAGE
+        # 5. VALIDATE BACKEND IMAGE
         # =====================================================================
-
-        logger.info(
-            "Expected backend image | %s:%s",
-            backend_repository,
-            revision,
-        )
 
         backend_result = validate_ecr_image(
             client=ecr_client,
@@ -1159,14 +1103,8 @@ class CIArtifactValidationTool(BaseTool):
         )
 
         # =====================================================================
-        # 6. VERIFY FRONTEND IMAGE
+        # 6. VALIDATE FRONTEND IMAGE
         # =====================================================================
-
-        logger.info(
-            "Expected frontend image | %s:%s",
-            frontend_repository,
-            revision,
-        )
 
         frontend_result = validate_ecr_image(
             client=ecr_client,
@@ -1176,7 +1114,7 @@ class CIArtifactValidationTool(BaseTool):
         )
 
         # =====================================================================
-        # 7. VERIFY S3 ARTIFACT
+        # 7. VALIDATE S3 ARTIFACT
         # =====================================================================
 
         s3_result = validate_s3_artifact(
@@ -1186,7 +1124,7 @@ class CIArtifactValidationTool(BaseTool):
         )
 
         # =====================================================================
-        # 8. AGGREGATE RESULT
+        # 8. DETERMINE OVERALL VALIDATION RESULT
         # =====================================================================
 
         validation = determine_validation_result(
@@ -1197,40 +1135,103 @@ class CIArtifactValidationTool(BaseTool):
 
         unknown_areas = []
 
-        if backend_result.get("status") == UNKNOWN:
-            unknown_areas.append(
-                "Backend ECR image verification could not be completed "
-                "authoritatively."
-            )
+        if backend_result["status"] == UNKNOWN:
+            unknown_areas.append("backend_ecr_image")
 
-        if frontend_result.get("status") == UNKNOWN:
-            unknown_areas.append(
-                "Frontend ECR image verification could not be completed "
-                "authoritatively."
-            )
+        if frontend_result["status"] == UNKNOWN:
+            unknown_areas.append("frontend_ecr_image")
 
-        if s3_result.get("status") == UNKNOWN:
-            unknown_areas.append(
-                "S3 artifact verification could not be completed "
-                "authoritatively."
+        if s3_result["status"] == UNKNOWN:
+            unknown_areas.append("s3_artifact")
+
+        if unknown_areas:
+            logger.warning(
+                "Validation incomplete due to UNKNOWN status in: %s",
+                ", ".join(unknown_areas),
             )
 
         # =====================================================================
         # 9. BUILD OUTPUT
         # =====================================================================
 
-        elapsed_ms = round(
-            (time.monotonic() - started) * 1000,
-            3,
+        elapsed_ms = int((time.time() - started) * 1000)
+
+        # Build expected image URIs
+        expected_backend = build_ecr_uri(
+            DEFAULT_AWS_REGISTRY_ID, region, backend_repository, revision
+        )
+        expected_frontend = build_ecr_uri(
+            DEFAULT_AWS_REGISTRY_ID, region, frontend_repository, revision
         )
 
-        expected_backend = (
-            f"{backend_repository}:{revision}"
+        output = {
+            "tool_name": TOOL_NAME,
+            "tool_version": TOOL_VERSION,
+            "timestamp": utc_now_iso(),
+            "resolved_source_version": revision,
+            "validation": {
+                "status": validation,
+                "verified": validation == VERIFIED,
+                "backend_image": {
+                    "expected_image_uri": expected_backend,
+                    "status": backend_result["status"],
+                    "verified": backend_result["verified"],
+                    "image_uri": backend_result["image_uri"],
+                    "image_digest": backend_result["image_digest"],
+                    "image_tags": backend_result["image_tags"],
+                    "image_pushed_at": backend_result["image_pushed_at"],
+                    "image_size_bytes": backend_result["image_size_bytes"],
+                    "registry_id": backend_result["registry_id"],
+                    "repository": backend_result["repository"],
+                    "repository_uri": backend_result["repository_uri"],
+                    "expected_tag": backend_result["expected_tag"],
+                    "correlation": backend_result["correlation"],
+                    "error": backend_result["error"],
+                },
+                "frontend_image": {
+                    "expected_image_uri": expected_frontend,
+                    "status": frontend_result["status"],
+                    "verified": frontend_result["verified"],
+                    "image_uri": frontend_result["image_uri"],
+                    "image_digest": frontend_result["image_digest"],
+                    "image_tags": frontend_result["image_tags"],
+                    "image_pushed_at": frontend_result["image_pushed_at"],
+                    "image_size_bytes": frontend_result["image_size_bytes"],
+                    "registry_id": frontend_result["registry_id"],
+                    "repository": frontend_result["repository"],
+                    "repository_uri": frontend_result["repository_uri"],
+                    "expected_tag": frontend_result["expected_tag"],
+                    "correlation": frontend_result["correlation"],
+                    "error": frontend_result["error"],
+                },
+                "s3_artifact": {
+                    "expected_s3_uri": f"s3://{supplied_bucket}/{supplied_key}",
+                    "status": s3_result["status"],
+                    "verified": s3_result["verified"],
+                    "bucket": s3_result["bucket"],
+                    "key": s3_result["key"],
+                    "s3_uri": s3_result["s3_uri"],
+                    "etag": s3_result["etag"],
+                    "size_bytes": s3_result["size_bytes"],
+                    "last_modified": s3_result["last_modified"],
+                    "error": s3_result["error"],
+                },
+            },
+            "metadata": {
+                "elapsed_ms": elapsed_ms,
+                "aws_region": region,
+            },
+        }
+
+        logger.info(
+            "==================== CI ARTIFACT VALIDATION COMPLETE ====================\n"
+            "Overall Status: %s | Verified: %s | Elapsed: %d ms",
+            validation,
+            validation == VERIFIED,
+            elapsed_ms,
         )
 
-        expected_frontend = (
-            f"{frontend_repository}:{revision}"
-        )
+        return json.dumps(output, indent=2, default=str)
 
         output = {
             "schema_version": "1.0",
