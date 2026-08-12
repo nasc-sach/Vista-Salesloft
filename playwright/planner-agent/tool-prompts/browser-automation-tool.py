@@ -28,6 +28,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 from urllib.parse import urljoin, urlparse
+import subprocess
 
 from pydantic import BaseModel, Field
 from crewai.tools import BaseTool
@@ -76,6 +77,10 @@ class BrowserAutomationToolSchema(BaseModel):
     authenticate: Optional[Dict[str, str]] = Field(
         default=None,
         description="Authentication credentials: {'username': '...', 'password': '...', 'login_url': '...'}"
+    )
+    ignore_https_errors: bool = Field(
+        default=False,
+        description="Ignore HTTPS/SSL certificate errors (for self-signed certificates)"
     )
 
 
@@ -138,6 +143,20 @@ class BrowserAutomationTool(BaseTool):
         """Log message with tool name prefix."""
         logging.info(f"[{self.name}] {msg}")
     
+    async def _check_browser_installed(self) -> bool:
+        """Check if Chromium browser is installed at runtime."""
+        try:
+            result = subprocess.run(
+                ["playwright", "show-browser"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0 or "chromium" in result.stdout.lower()
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            # If command fails, assume browser not installed
+            return False
+    
     def _run(
         self,
         url: str,
@@ -147,6 +166,7 @@ class BrowserAutomationTool(BaseTool):
         take_screenshot: bool = True,
         headless: bool = True,
         authenticate: Optional[Dict[str, str]] = None,
+        ignore_https_errors: bool = False,
         **kwargs
     ) -> str:
         """
@@ -183,7 +203,8 @@ class BrowserAutomationTool(BaseTool):
                     capture_network=capture_network,
                     take_screenshot=take_screenshot,
                     headless=headless,
-                    authenticate=authenticate
+                    authenticate=authenticate,
+                    ignore_https_errors=ignore_https_errors
                 )
             )
             
@@ -207,7 +228,9 @@ class BrowserAutomationTool(BaseTool):
         capture_network: bool,
         take_screenshot: bool,
         headless: bool,
-        authenticate: Optional[Dict[str, str]]
+
+        authenticate: Optional[Dict[str, str]],
+        ignore_https_errors: bool = False
     ) -> Dict[str, Any]:
         """
         Async browser automation workflow.
@@ -221,15 +244,62 @@ class BrowserAutomationTool(BaseTool):
         # Network capture storage
         network_requests: List[Dict[str, Any]] = []
         api_calls: List[Dict[str, Any]] = []
+        errors: List[Dict[str, Any]] = []
+        warnings: List[str] = []
+        
+        # Check browser installation before launching
+        if not await self._check_browser_installed():
+            return {
+                "error": True,
+                "success": False,
+                "code": "CHROMIUM_NOT_INSTALLED",
+                "message": (
+                    "Chromium browser not found. Install with:\n"
+                    "  playwright install chromium"
+                ),
+                "url": url,
+                "errors": [{
+                    "stage": "browser_check",
+                    "error": "Chromium binary not installed",
+                    "type": "InstallationError"
+                }],
+                "warnings": []
+            }
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=headless)
+
+            # Wrap browser launch in try/except
+            try:
+                browser = await p.chromium.launch(headless=headless)
+            except Exception as launch_exc:
+                error_msg = str(launch_exc)
+                if "Executable doesn't exist" in error_msg or "Failed to launch" in error_msg:
+                    code = "CHROMIUM_NOT_FOUND"
+                    message = (
+                        "Failed to launch Chromium browser. Install with:\n"
+                        "  playwright install chromium"
+                    )
+                else:
+                    code = "BROWSER_LAUNCH_FAILED"
+                    message = f"Browser launch failed: {error_msg}"
+                
+                return {
+                    "error": True,
+                    "success": False,
+                    "code": code,
+                    "message": message,
+                    "url": url,
+                    "errors": [{"stage": "browser_launch", "error": error_msg, "type": type(launch_exc).__name__}],
+                    "warnings": []
+                }
             
             try:
                 context = await browser.new_context(
                     user_agent=self.USER_AGENT,
-                    viewport={"width": 1920, "height": 1080}
+                    viewport={"width": 1920, "height": 1080},
+                    ignore_https_errors=ignore_https_errors
                 )
+
                 
                 page = await context.new_page()
                 
@@ -247,22 +317,90 @@ class BrowserAutomationTool(BaseTool):
                 self._log(f"Navigating to: {url}")
                 navigation_start = time.time()
                 
-                await page.goto(url, wait_until="domcontentloaded", timeout=wait_timeout)
+                # Navigate with proper error handling
+                try:
+                    response = await page.goto(url, wait_until="domcontentloaded", timeout=wait_timeout)
+                    
+                    # Check response status
+                    if response:
+                        status = response.status
+                        if status >= 400:
+                            warnings.append(f"HTTP {status} response from server")
+                            if status >= 500:
+                                errors.append({
+                                    "stage": "navigation",
+                                    "error": f"Server error: HTTP {status}",
+                                    "type": "HTTPError",
+                                    "status_code": status
+                                })
+                    
+                except Exception as nav_exc:
+                    error_msg = str(nav_exc)
+                    error_type = type(nav_exc).__name__
+                    
+                    # Categorize navigation errors
+                    if "net::ERR_CERT" in error_msg or "SSL" in error_msg or "certificate" in error_msg.lower():
+                        code = "SSL_ERROR"
+                        message = (
+                            f"SSL certificate error: {error_msg}\n"
+                            "Retry with ignore_https_errors=True for self-signed certificates."
+                        )
+                    elif "net::ERR_NAME_NOT_RESOLVED" in error_msg or "DNS" in error_msg:
+                        code = "DNS_ERROR"
+                        message = f"DNS resolution failed: {error_msg}"
+                    elif "Timeout" in error_type or "timeout" in error_msg.lower():
+                        code = "TIMEOUT_ERROR"
+                        message = f"Navigation timeout ({wait_timeout}ms): {error_msg}"
+                    elif "net::ERR_CONNECTION" in error_msg:
+                        code = "CONNECTION_ERROR"
+                        message = f"Connection failed: {error_msg}"
+                    else:
+                        code = "NAVIGATION_ERROR"
+                        message = f"Navigation failed: {error_msg}"
+                    
+                    self._log(f"❌ {message}")
+                    
+                    # Abort on critical navigation error
+                    errors.append({
+                        "stage": "navigation",
+                        "error": error_msg,
+                        "type": error_type,
+                        "code": code
+                    })
+                    
+                    return {
+                        "error": True,
+                        "success": False,
+                        "code": code,
+                        "message": message,
+                        "url": url,
+                        "errors": errors,
+                        "warnings": warnings
+                    }
                 
                 # Wait for network idle (React hydration)
                 try:
-                    await page.wait_for_load_state("networkidle", timeout=wait_timeout)
+                    # Longer timeout for React hydration
+                    react_timeout = wait_timeout * 2
+                    await page.wait_for_load_state("networkidle", timeout=react_timeout)
                 except Exception as e:
-                    self._log(f"Network idle timeout (expected for some SPAs): {e}")
+                    warnings.append(f"Network idle timeout after {react_timeout}ms (may indicate slow React hydration)")
+                    self._log(f"⚠ Network idle timeout (expected for some SPAs): {e}")
                 
                 # Wait for specific selector if provided
                 if wait_for_selector:
                     self._log(f"Waiting for selector: {wait_for_selector}")
-                    await page.wait_for_selector(wait_for_selector, timeout=wait_timeout)
+                    try:
+                        await page.wait_for_selector(wait_for_selector, timeout=wait_timeout)
+                    except Exception as sel_exc:
+                        warnings.append(f"Selector '{wait_for_selector}' not found within {wait_timeout}ms")
+                        self._log(f"⚠ Selector timeout: {sel_exc}")
                 else:
                     # Auto-detect framework and wait for common root elements
-                    await self._wait_for_framework_root(page, wait_timeout)
-                
+                    framework_found = await self._wait_for_framework_root(page, wait_timeout)
+                    if not framework_found:
+                        warnings.append("No React/Vue/Angular root element detected within timeout")
+
                 navigation_time = (time.time() - navigation_start) * 1000
                 self._log(f"Page loaded in {navigation_time:.0f}ms")
                 
@@ -302,6 +440,40 @@ class BrowserAutomationTool(BaseTool):
                     "recommendations": recommendations
                 }
                 
+
+
+
+
+
+
+
+
+
+
+
+
+                result = {
+                    "url": url,
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "execution_time_ms": round(execution_time, 2),
+                    "success": len(errors) == 0,
+                    "rendering": {
+                        **rendering,
+                        "hydration_time_ms": round(navigation_time, 2)
+                    },
+                    "dom": dom_data,
+                    "network": {
+                        "total_requests": len(network_requests),
+                        "api_calls": api_calls,
+                        "resource_summary": self._summarize_resources(network_requests)
+                    },
+                    "authentication": auth_data,
+                    "screenshot_path": screenshot_path,
+                    "recommendations": recommendations,
+                    "errors": errors,
+                    "warnings": warnings
+                }
+                
                 self._log(f"Automation completed in {execution_time:.0f}ms")
                 return result
                 
@@ -314,6 +486,7 @@ class BrowserAutomationTool(BaseTool):
         network_requests: List[Dict[str, Any]],
         api_calls: List[Dict[str, Any]]
     ) -> None:
+
         """Capture network response (sync callback)."""
         try:
             url = response.url
@@ -425,26 +598,42 @@ class BrowserAutomationTool(BaseTool):
         except Exception as e:
             self._log(f"Authentication failed: {e}")
     
-    async def _wait_for_framework_root(self, page: Page, timeout: int) -> None:
-        """Wait for common framework root elements to appear."""
+    async def _wait_for_framework_root(self, page: Page, timeout: int) -> bool:
+        """Wait for common framework root elements to appear. Returns True if found."""
+
+
+
+
+
+
+
+
+
+
+
+
+
         all_selectors = (
             self.REACT_SELECTORS +
             self.VUE_SELECTORS +
             self.ANGULAR_SELECTORS
         )
         
-        # Try to wait for any common root selector
+        # Try to wait for any common root selector with retry logic
         for selector in all_selectors:
             try:
-                await page.wait_for_selector(selector, timeout=5000)
+                # Longer timeout for each React selector attempt
+                await page.wait_for_selector(selector, timeout=8000)
                 self._log(f"Found framework root: {selector}")
-                return
+                return True
             except Exception:
                 continue
         
         # If no framework root found, wait a bit for dynamic content
-        self._log("No framework root detected, waiting 2s for dynamic content")
+        self._log("No framework root element detected")
         await page.wait_for_timeout(2000)
+        return False
+
     
     async def _detect_rendering_architecture(
         self,
