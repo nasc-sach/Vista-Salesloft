@@ -1,0 +1,1 @@
+# Vista Browser Worker package

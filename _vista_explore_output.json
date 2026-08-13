@@ -1,0 +1,1738 @@
+{
+  "AuthenticationDiscoveryTool": {
+    "observation": "Authentication Form Detected",
+    "location": "https://vistapoc.nitor.in/login",
+    "login_form_visible": true,
+    "credential_fields": [
+      {
+        "name": "username",
+        "type": "text",
+        "id": "username",
+        "placeholder": "Username",
+        "required": false
+      },
+      {
+        "name": "password",
+        "type": "password",
+        "id": "password",
+        "placeholder": "Password",
+        "required": false
+      }
+    ],
+    "submit_button": {
+      "text": "Sign In",
+      "type": "submit"
+    },
+    "secondary_actions": [
+      {
+        "text": "Sign up",
+        "href": "/signup"
+      }
+    ],
+    "auth_type": "Form-Based Authentication",
+    "public_accessible": true,
+    "timestamp": "2026-08-12T17:56:28.767712Z",
+    "confidence": "High"
+  },
+  "TechnologyDetectionTool": {
+    "url": "https://vistapoc.nitor.in/login",
+    "https_confirmed": true,
+    "framework_hints": [
+      "React",
+      "Vite"
+    ],
+    "ui_library_hints": [],
+    "api_patterns": [
+      "/api/audit/entries",
+      "/api/reference-data/holidays",
+      "/api/v1/auth/login",
+      "/api/v1/auth/me",
+      "/api/v1/rosters/15/compliance",
+      "/api/v1/rosters/week",
+      "/api/v1/shift-requests/pending",
+      "/api/v1/shifts",
+      "/api/v1/staff"
+    ],
+    "timestamp": "2026-08-12T17:56:28.767712Z",
+    "confidence": "High"
+  },
+  "BrowserExplorationTool": {
+    "TYPE_USERNAME": {
+      "action_performed": "Type",
+      "target_element": "username",
+      "stored_fields": [
+        "username"
+      ],
+      "status": "Stored input for username",
+      "timestamp": "2026-08-12T17:55:02.527207Z",
+      "confidence": "High"
+    },
+    "TYPE_PASSWORD": {
+      "action_performed": "Type",
+      "target_element": "password",
+      "stored_fields": [
+        "username",
+        "password"
+      ],
+      "status": "Stored input for password",
+      "timestamp": "2026-08-12T17:55:02.530888Z",
+      "confidence": "High"
+    },
+    "PAGES": {
+      "LOGIN": {
+        "current_url": "https://vistapoc.nitor.in/login",
+        "page_title": "VIS Roster Management",
+        "https": true,
+        "headings": [
+          {
+            "tag": "h1",
+            "text": "VIS Login"
+          }
+        ],
+        "input_fields": [
+          {
+            "type": "text",
+            "id": "username",
+            "name": "",
+            "placeholder": "Username",
+            "required": false
+          },
+          {
+            "type": "password",
+            "id": "password",
+            "name": "",
+            "placeholder": "Password",
+            "required": false
+          }
+        ],
+        "buttons": [
+          {
+            "text": "Sign In",
+            "type": "submit"
+          }
+        ],
+        "all_links": [
+          {
+            "text": "Sign up",
+            "href": "https://vistapoc.nitor.in/signup"
+          }
+        ],
+        "nav_links": [],
+        "visible_text": [
+          "VIS Login",
+          "Visitor Information System",
+          "Username",
+          "Password",
+          "Sign In",
+          "Don't have an account? Sign up",
+          "Sign up"
+        ],
+        "body_snippet": "VIS Login Visitor Information System Username Password Sign In Don't have an account? Sign up",
+        "fetch_source": "SPA Module Inspector",
+        "confidence": "High",
+        "action_performed": "Navigate",
+        "timestamp": "2026-08-12T17:55:02.489161Z"
+      },
+      "DASHBOARD": {
+        "current_url": "https://vistapoc.nitor.in/dashboard",
+        "page_title": "VIS Roster Management",
+        "https": true,
+        "headings": [
+          {
+            "tag": "h1",
+            "text": "VIS"
+          },
+          {
+            "tag": "h1",
+            "text": "Manager Dashboard"
+          },
+          {
+            "tag": "h2",
+            "text": "Facility Overview"
+          },
+          {
+            "tag": "h2",
+            "text": "Quick Actions"
+          }
+        ],
+        "input_fields": [],
+        "buttons": [
+          {
+            "text": "Dashboard",
+            "type": "submit"
+          },
+          {
+            "text": "Staff Management",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Management",
+            "type": "submit"
+          },
+          {
+            "text": "Weekly Roster",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Requests",
+            "type": "submit"
+          },
+          {
+            "text": "Reference Data",
+            "type": "submit"
+          },
+          {
+            "text": "Export",
+            "type": "submit"
+          },
+          {
+            "text": "Audit",
+            "type": "submit"
+          },
+          {
+            "text": "Logout",
+            "type": "submit"
+          }
+        ],
+        "all_links": [],
+        "nav_links": [
+          {
+            "text": "Dashboard",
+            "href": ""
+          },
+          {
+            "text": "Staff Management",
+            "href": ""
+          },
+          {
+            "text": "Shift Management",
+            "href": ""
+          },
+          {
+            "text": "Weekly Roster",
+            "href": ""
+          },
+          {
+            "text": "Shift Requests",
+            "href": ""
+          },
+          {
+            "text": "Reference Data",
+            "href": ""
+          },
+          {
+            "text": "Export",
+            "href": ""
+          },
+          {
+            "text": "Audit",
+            "href": ""
+          },
+          {
+            "text": "Logout",
+            "href": ""
+          }
+        ],
+        "visible_text": [
+          "VIS",
+          "Dashboard",
+          "Staff Management",
+          "Shift Management",
+          "Weekly Roster",
+          "Shift Requests",
+          "Reference Data",
+          "Export",
+          "Audit",
+          "manager1",
+          "Logout",
+          "Manager Dashboard",
+          "Welcome, manager1 | St. Jude General Hospital",
+          "Facility Overview",
+          "Quick Actions",
+          "View Staff Roster",
+          "Manage Schedules",
+          "Generate Reports",
+          "Facility Settings"
+        ],
+        "body_snippet": "VIS Dashboard Staff Management Shift Management Weekly Roster Shift Requests Reference Data Export Audit manager1 Logout Manager Dashboard Welcome, manager1 | St. Jude General Hospital Facility Overview This is a placeholder for the facility manager dashboard. Future features will include roster management, staff scheduling, and facility operations overview. Quick Actions View Staff Roster Manage Schedules Generate Reports Facility Settings",
+        "fetch_source": "SPA Module Inspector",
+        "confidence": "High",
+        "action_performed": "Click (Dashboard)",
+        "timestamp": "2026-08-12T17:55:14.284192Z"
+      },
+      "STAFF_MANAGEMENT": {
+        "current_url": "https://vistapoc.nitor.in/staff",
+        "page_title": "VIS Roster Management",
+        "https": true,
+        "headings": [
+          {
+            "tag": "h1",
+            "text": "VIS"
+          },
+          {
+            "tag": "h1",
+            "text": "Staff Management"
+          }
+        ],
+        "input_fields": [
+          {
+            "type": "text",
+            "id": "",
+            "name": "",
+            "placeholder": "Search by name or contact...",
+            "required": false
+          },
+          {
+            "type": "select",
+            "id": "",
+            "name": "",
+            "placeholder": "Filter by employment status",
+            "required": false
+          }
+        ],
+        "buttons": [
+          {
+            "text": "Dashboard",
+            "type": "submit"
+          },
+          {
+            "text": "Staff Management",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Management",
+            "type": "submit"
+          },
+          {
+            "text": "Weekly Roster",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Requests",
+            "type": "submit"
+          },
+          {
+            "text": "Reference Data",
+            "type": "submit"
+          },
+          {
+            "text": "Export",
+            "type": "submit"
+          },
+          {
+            "text": "Audit",
+            "type": "submit"
+          },
+          {
+            "text": "Logout",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add Staff",
+            "type": "submit"
+          },
+          {
+            "text": "Search",
+            "type": "submit"
+          },
+          {
+            "text": "Clear",
+            "type": "submit"
+          },
+          {
+            "text": "Edit",
+            "type": "submit"
+          },
+          {
+            "text": "Deactivate",
+            "type": "submit"
+          },
+          {
+            "text": "Edit",
+            "type": "submit"
+          },
+          {
+            "text": "Deactivate",
+            "type": "submit"
+          },
+          {
+            "text": "Edit",
+            "type": "submit"
+          },
+          {
+            "text": "Deactivate",
+            "type": "submit"
+          }
+        ],
+        "all_links": [],
+        "nav_links": [
+          {
+            "text": "Dashboard",
+            "href": ""
+          },
+          {
+            "text": "Staff Management",
+            "href": ""
+          },
+          {
+            "text": "Shift Management",
+            "href": ""
+          },
+          {
+            "text": "Weekly Roster",
+            "href": ""
+          },
+          {
+            "text": "Shift Requests",
+            "href": ""
+          },
+          {
+            "text": "Reference Data",
+            "href": ""
+          },
+          {
+            "text": "Export",
+            "href": ""
+          },
+          {
+            "text": "Audit",
+            "href": ""
+          },
+          {
+            "text": "Logout",
+            "href": ""
+          }
+        ],
+        "visible_text": [
+          "VIS",
+          "Dashboard",
+          "Staff Management",
+          "Shift Management",
+          "Weekly Roster",
+          "Shift Requests",
+          "Reference Data",
+          "Export",
+          "Audit",
+          "manager1",
+          "Logout",
+          "+ Add Staff",
+          "Search",
+          "Clear",
+          "NAME",
+          "CONTACT",
+          "ROLE",
+          "EMPLOYMENT STATUS",
+          "SCHEDULING ELIGIBLE",
+          "CREATED",
+          "ACTIONS",
+          "staff1",
+          "1234567890",
+          "DOCTOR",
+          "ACTIVE",
+          "Yes",
+          "8/10/2026",
+          "Edit Deactivate",
+          "Edit",
+          "Deactivate",
+          "Pratham",
+          "test3",
+          "8456739788",
+          "TECHNICIAN",
+          "ON_LEAVE",
+          "No",
+          "8/11/2026"
+        ],
+        "body_snippet": "VIS Dashboard Staff Management Shift Management Weekly Roster Shift Requests Reference Data Export Audit manager1 Logout Staff Management + Add Staff All Statuses Active Inactive On Leave Search Clear NAME CONTACT ROLE EMPLOYMENT STATUS SCHEDULING ELIGIBLE CREATED ACTIONS staff1 1234567890 DOCTOR ACTIVE Yes 8/10/2026 Edit Deactivate Pratham 1234567890 DOCTOR ACTIVE Yes 8/10/2026 Edit Deactivate test3 8456739788 TECHNICIAN ON_LEAVE No 8/11/2026 Edit Deactivate",
+        "fetch_source": "SPA Module Inspector",
+        "confidence": "High",
+        "action_performed": "Click (Staff Management)",
+        "timestamp": "2026-08-12T17:55:24.677060Z"
+      },
+      "SHIFT_MANAGEMENT": {
+        "current_url": "https://vistapoc.nitor.in/shifts",
+        "page_title": "VIS Roster Management",
+        "https": true,
+        "headings": [
+          {
+            "tag": "h1",
+            "text": "VIS"
+          },
+          {
+            "tag": "h1",
+            "text": "Shift Management"
+          }
+        ],
+        "input_fields": [],
+        "buttons": [
+          {
+            "text": "Dashboard",
+            "type": "submit"
+          },
+          {
+            "text": "Staff Management",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Management",
+            "type": "submit"
+          },
+          {
+            "text": "Weekly Roster",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Requests",
+            "type": "submit"
+          },
+          {
+            "text": "Reference Data",
+            "type": "submit"
+          },
+          {
+            "text": "Export",
+            "type": "submit"
+          },
+          {
+            "text": "Audit",
+            "type": "submit"
+          },
+          {
+            "text": "Logout",
+            "type": "submit"
+          },
+          {
+            "text": "+ Create Shift",
+            "type": "submit"
+          },
+          {
+            "text": "← Previous Week",
+            "type": "submit"
+          },
+          {
+            "text": "Next Week →",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "09:00 - 17:00",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "09:00 - 17:00",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "09:00 - 17:00",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "09:00 - 17:00",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "15:10 - 15:10",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          },
+          {
+            "text": "11:02 - 17:00",
+            "type": "submit"
+          },
+          {
+            "text": "+ Add",
+            "type": "submit"
+          }
+        ],
+        "all_links": [],
+        "nav_links": [
+          {
+            "text": "Dashboard",
+            "href": ""
+          },
+          {
+            "text": "Staff Management",
+            "href": ""
+          },
+          {
+            "text": "Shift Management",
+            "href": ""
+          },
+          {
+            "text": "Weekly Roster",
+            "href": ""
+          },
+          {
+            "text": "Shift Requests",
+            "href": ""
+          },
+          {
+            "text": "Reference Data",
+            "href": ""
+          },
+          {
+            "text": "Export",
+            "href": ""
+          },
+          {
+            "text": "Audit",
+            "href": ""
+          },
+          {
+            "text": "Logout",
+            "href": ""
+          }
+        ],
+        "visible_text": [
+          "VIS",
+          "Dashboard",
+          "Staff Management",
+          "Shift Management",
+          "Weekly Roster",
+          "Shift Requests",
+          "Reference Data",
+          "Export",
+          "Audit",
+          "manager1",
+          "Logout",
+          "+ Create Shift",
+          "← Previous Week",
+          "Next Week →",
+          "+ Add",
+          "09:00 - 17:00",
+          "15:10 - 15:10",
+          "11:02 - 17:00"
+        ],
+        "body_snippet": "VIS Dashboard Staff Management Shift Management Weekly Roster Shift Requests Reference Data Export Audit manager1 Logout Shift Management + Create Shift ← Previous Week Aug 10 - Aug 16, 2026 Next Week → STAFF MEMBER MON, AUG 10 TUE, AUG 11 WED, AUG 12 THU, AUG 13 FRI, AUG 14 SAT, AUG 15 SUN, AUG 16 staff1 + Add 09:00 - 17:00 + Add + Add + Add + Add + Add Pratham + Add + Add + Add 09:00 - 17:00 + Add + Add + Add test3 + Add + Add + Add + Add + Add + Add + Add manager1 09:00 - 17:00 + Add + Add + Add + Add + Add + Add test + Add + Add 09:00 - 17:00 + Add + Add + Add + Add new1 15:10 - 15:10 + Add + Add + Add + Add 11:02 - 17:00 + Add",
+        "fetch_source": "SPA Module Inspector",
+        "confidence": "High",
+        "action_performed": "Click (Shift Management)",
+        "timestamp": "2026-08-12T17:55:35.075850Z"
+      },
+      "WEEKLY_ROSTER": {
+        "current_url": "https://vistapoc.nitor.in/roster/weekly",
+        "page_title": "VIS Roster Management",
+        "https": true,
+        "headings": [
+          {
+            "tag": "h1",
+            "text": "VIS"
+          },
+          {
+            "tag": "h1",
+            "text": "Weekly Roster"
+          },
+          {
+            "tag": "h2",
+            "text": "Compliance Review"
+          }
+        ],
+        "input_fields": [
+          {
+            "type": "week",
+            "id": "week-selector",
+            "name": "",
+            "placeholder": "Select week",
+            "required": false
+          }
+        ],
+        "buttons": [
+          {
+            "text": "Dashboard",
+            "type": "submit"
+          },
+          {
+            "text": "Staff Management",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Management",
+            "type": "submit"
+          },
+          {
+            "text": "Weekly Roster",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Requests",
+            "type": "submit"
+          },
+          {
+            "text": "Reference Data",
+            "type": "submit"
+          },
+          {
+            "text": "Export",
+            "type": "submit"
+          },
+          {
+            "text": "Audit",
+            "type": "submit"
+          },
+          {
+            "text": "Logout",
+            "type": "submit"
+          },
+          {
+            "text": "✨ Generate Draft",
+            "type": "submit"
+          },
+          {
+            "text": "Save Draft",
+            "type": "submit"
+          },
+          {
+            "text": "Publish",
+            "type": "submit"
+          }
+        ],
+        "all_links": [],
+        "nav_links": [
+          {
+            "text": "Dashboard",
+            "href": ""
+          },
+          {
+            "text": "Staff Management",
+            "href": ""
+          },
+          {
+            "text": "Shift Management",
+            "href": ""
+          },
+          {
+            "text": "Weekly Roster",
+            "href": ""
+          },
+          {
+            "text": "Shift Requests",
+            "href": ""
+          },
+          {
+            "text": "Reference Data",
+            "href": ""
+          },
+          {
+            "text": "Export",
+            "href": ""
+          },
+          {
+            "text": "Audit",
+            "href": ""
+          },
+          {
+            "text": "Logout",
+            "href": ""
+          }
+        ],
+        "visible_text": [
+          "VIS",
+          "Dashboard",
+          "Staff Management",
+          "Shift Management",
+          "Weekly Roster",
+          "Shift Requests",
+          "Reference Data",
+          "Export",
+          "Audit",
+          "manager1",
+          "Logout",
+          "Week:",
+          "Status:",
+          "Draft",
+          "Version:",
+          "✨ Generate Draft",
+          "Generate Draft",
+          "Save Draft",
+          "Publish",
+          "Compliance Review",
+          "PASS",
+          "All Checks Passed",
+          "This roster meets all compliance requirements and is ready to publish.",
+          "Last checked: 8/12/2026, 11:25:42 PM",
+          "Staff ID",
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+          "Sunday",
+          "06:00:00 - 14:00:00 Template: 22:00:00 - 06:00:00 Template:",
+          "14:00:00 - 22:00:00 Template:",
+          "06:00:00 - 14:00:00 Template: 14:00:00 - 22:00:00 Template: 22:00:00 - 06:00:00 Template:"
+        ],
+        "body_snippet": "VIS Dashboard Staff Management Shift Management Weekly Roster Shift Requests Reference Data Export Audit manager1 Logout Weekly Roster Week: Status: Draft Version: 0 ✨ Generate Draft Save Draft Publish Compliance Review PASS Compliance check complete. Status: PASS. 0 issues found. ✓ All Checks Passed This roster meets all compliance requirements and is ready to publish. Last checked: 8/12/2026, 11:25:42 PM Staff ID Monday Tuesday Wednesday Thursday Friday Saturday Sunday 2 06:00:00 - 14:00:00 Template: 22:00:00 - 06:00:00 Template: 14:00:00 - 22:00:00 Template: 06:00:00 - 14:00:00 Template: 22:00:00 - 06:00:00 Template: 14:00:00 - 22:00:00 Template: 06:00:00 - 14:00:00 Template: 22:00:00 - 06:00:00 Template: — 06:00:00 - 14:00:00 Template: 22:00:00 - 06:00:00 Template: 5 14:00:00 - 22:00:00 Template: 06:00:00 - 14:00:00 Template: 22:00:00 - 06:00:00 Template: 14:00:00 - 22:00:00 Template: 06:00:00 - 14:00:00 Template: 22:00:00 - 06:00:00 Template: 14:00:00 - 22:00:00 Template: 06:00:00 - 14:00:00 Template: 14:00:00 - 22:00:00 Template: 22:00:00 - 06:00:00 Template: 14:00:00 - 22:00:00 Template:",
+        "fetch_source": "SPA Module Inspector",
+        "confidence": "High",
+        "action_performed": "Click (Weekly Roster)",
+        "timestamp": "2026-08-12T17:55:45.462153Z"
+      },
+      "SHIFT_REQUESTS": {
+        "current_url": "https://vistapoc.nitor.in/manager/shift-requests",
+        "page_title": "VIS Roster Management",
+        "https": true,
+        "headings": [
+          {
+            "tag": "h1",
+            "text": "VIS"
+          },
+          {
+            "tag": "h1",
+            "text": "Shift Change Requests"
+          }
+        ],
+        "input_fields": [
+          {
+            "type": "select",
+            "id": "status-filter",
+            "name": "",
+            "placeholder": "Filter requests by status",
+            "required": false
+          }
+        ],
+        "buttons": [
+          {
+            "text": "Dashboard",
+            "type": "submit"
+          },
+          {
+            "text": "Staff Management",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Management",
+            "type": "submit"
+          },
+          {
+            "text": "Weekly Roster",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Requests",
+            "type": "submit"
+          },
+          {
+            "text": "Reference Data",
+            "type": "submit"
+          },
+          {
+            "text": "Export",
+            "type": "submit"
+          },
+          {
+            "text": "Audit",
+            "type": "submit"
+          },
+          {
+            "text": "Logout",
+            "type": "submit"
+          },
+          {
+            "text": "View Details",
+            "type": "submit"
+          }
+        ],
+        "all_links": [],
+        "nav_links": [
+          {
+            "text": "Dashboard",
+            "href": ""
+          },
+          {
+            "text": "Staff Management",
+            "href": ""
+          },
+          {
+            "text": "Shift Management",
+            "href": ""
+          },
+          {
+            "text": "Weekly Roster",
+            "href": ""
+          },
+          {
+            "text": "Shift Requests",
+            "href": ""
+          },
+          {
+            "text": "Reference Data",
+            "href": ""
+          },
+          {
+            "text": "Export",
+            "href": ""
+          },
+          {
+            "text": "Audit",
+            "href": ""
+          },
+          {
+            "text": "Logout",
+            "href": ""
+          }
+        ],
+        "visible_text": [
+          "VIS",
+          "Dashboard",
+          "Staff Management",
+          "Shift Management",
+          "Weekly Roster",
+          "Shift Requests",
+          "Reference Data",
+          "Export",
+          "Audit",
+          "manager1",
+          "Logout",
+          "Shift Change Requests",
+          "Review and manage pending shift change requests",
+          "Filter by Status:",
+          "Request ID",
+          "Status",
+          "Requester",
+          "Shift Date",
+          "Shift Time",
+          "Request Type",
+          "Submitted",
+          "Actions",
+          "SUBMITTED",
+          "staff1",
+          "Aug 11, 2026",
+          "09:00 - 17:00",
+          "xyz am not able to request",
+          "Aug 10, 2026, 15:03",
+          "View Details"
+        ],
+        "body_snippet": "VIS Dashboard Staff Management Shift Management Weekly Roster Shift Requests Reference Data Export Audit manager1 Logout Shift Change Requests Review and manage pending shift change requests Filter by Status: Submitted Pending Approved Rejected Request ID Status Requester Shift Date Shift Time Request Type Submitted Actions 1 SUBMITTED staff1 Aug 11, 2026 09:00 - 17:00 xyz am not able to request Aug 10, 2026, 15:03 View Details",
+        "fetch_source": "SPA Module Inspector",
+        "confidence": "High",
+        "action_performed": "Click (Shift Requests)",
+        "timestamp": "2026-08-12T17:55:55.853736Z"
+      },
+      "REFERENCE_DATA": {
+        "current_url": "https://vistapoc.nitor.in/reference-data",
+        "page_title": "VIS Roster Management",
+        "https": true,
+        "headings": [
+          {
+            "tag": "h1",
+            "text": "VIS"
+          },
+          {
+            "tag": "h1",
+            "text": "Reference Data Management"
+          }
+        ],
+        "input_fields": [
+          {
+            "type": "number",
+            "id": "",
+            "name": "",
+            "placeholder": "Facility ID",
+            "required": false
+          },
+          {
+            "type": "text",
+            "id": "",
+            "name": "",
+            "placeholder": "Region",
+            "required": false
+          },
+          {
+            "type": "date",
+            "id": "",
+            "name": "",
+            "placeholder": "Date From",
+            "required": false
+          },
+          {
+            "type": "date",
+            "id": "",
+            "name": "",
+            "placeholder": "Date To",
+            "required": false
+          }
+        ],
+        "buttons": [
+          {
+            "text": "Dashboard",
+            "type": "submit"
+          },
+          {
+            "text": "Staff Management",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Management",
+            "type": "submit"
+          },
+          {
+            "text": "Weekly Roster",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Requests",
+            "type": "submit"
+          },
+          {
+            "text": "Reference Data",
+            "type": "submit"
+          },
+          {
+            "text": "Export",
+            "type": "submit"
+          },
+          {
+            "text": "Audit",
+            "type": "submit"
+          },
+          {
+            "text": "Logout",
+            "type": "submit"
+          },
+          {
+            "text": "+ Create Holiday",
+            "type": "submit"
+          },
+          {
+            "text": "↑ Upload CSV",
+            "type": "submit"
+          },
+          {
+            "text": "Edit",
+            "type": "submit"
+          },
+          {
+            "text": "Delete",
+            "type": "submit"
+          }
+        ],
+        "all_links": [],
+        "nav_links": [
+          {
+            "text": "Dashboard",
+            "href": ""
+          },
+          {
+            "text": "Staff Management",
+            "href": ""
+          },
+          {
+            "text": "Shift Management",
+            "href": ""
+          },
+          {
+            "text": "Weekly Roster",
+            "href": ""
+          },
+          {
+            "text": "Shift Requests",
+            "href": ""
+          },
+          {
+            "text": "Reference Data",
+            "href": ""
+          },
+          {
+            "text": "Export",
+            "href": ""
+          },
+          {
+            "text": "Audit",
+            "href": ""
+          },
+          {
+            "text": "Logout",
+            "href": ""
+          }
+        ],
+        "visible_text": [
+          "VIS",
+          "Dashboard",
+          "Staff Management",
+          "Shift Management",
+          "Weekly Roster",
+          "Shift Requests",
+          "Reference Data",
+          "Export",
+          "Audit",
+          "manager1",
+          "Logout",
+          "Reference Data Management",
+          "Manage holiday entries for facilities and regions",
+          "+ Create Holiday",
+          "↑ Upload CSV",
+          "Name",
+          "Region",
+          "Facility ID",
+          "Effective From",
+          "Effective To",
+          "Status",
+          "Actions",
+          "Independence Day",
+          "India",
+          "100",
+          "2026-08-15",
+          "Inactive",
+          "EditDelete",
+          "Edit",
+          "Delete"
+        ],
+        "body_snippet": "VIS Dashboard Staff Management Shift Management Weekly Roster Shift Requests Reference Data Export Audit manager1 Logout Reference Data Management Manage holiday entries for facilities and regions + Create Holiday ↑ Upload CSV Name Region Facility ID Effective From Effective To Status Actions Independence Day India 100 2026-08-15 2026-08-15 Inactive EditDelete",
+        "fetch_source": "SPA Module Inspector",
+        "confidence": "High",
+        "action_performed": "Click (Reference Data)",
+        "timestamp": "2026-08-12T17:56:06.232034Z"
+      },
+      "EXPORT": {
+        "current_url": "https://vistapoc.nitor.in/export",
+        "page_title": "VIS Roster Management",
+        "https": true,
+        "headings": [
+          {
+            "tag": "h1",
+            "text": "VIS"
+          },
+          {
+            "tag": "h1",
+            "text": "Roster CSV Export"
+          },
+          {
+            "tag": "h2",
+            "text": "Roster Summary"
+          },
+          {
+            "tag": "h2",
+            "text": "Export Specification & Audit Compliance"
+          }
+        ],
+        "input_fields": [
+          {
+            "type": "week",
+            "id": "export-week-input",
+            "name": "",
+            "placeholder": "Select week for export",
+            "required": false
+          }
+        ],
+        "buttons": [
+          {
+            "text": "Dashboard",
+            "type": "submit"
+          },
+          {
+            "text": "Staff Management",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Management",
+            "type": "submit"
+          },
+          {
+            "text": "Weekly Roster",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Requests",
+            "type": "submit"
+          },
+          {
+            "text": "Reference Data",
+            "type": "submit"
+          },
+          {
+            "text": "Export",
+            "type": "submit"
+          },
+          {
+            "text": "Audit",
+            "type": "submit"
+          },
+          {
+            "text": "Logout",
+            "type": "submit"
+          },
+          {
+            "text": "📥 Export to CSV",
+            "type": "submit"
+          }
+        ],
+        "all_links": [],
+        "nav_links": [
+          {
+            "text": "Dashboard",
+            "href": ""
+          },
+          {
+            "text": "Staff Management",
+            "href": ""
+          },
+          {
+            "text": "Shift Management",
+            "href": ""
+          },
+          {
+            "text": "Weekly Roster",
+            "href": ""
+          },
+          {
+            "text": "Shift Requests",
+            "href": ""
+          },
+          {
+            "text": "Reference Data",
+            "href": ""
+          },
+          {
+            "text": "Export",
+            "href": ""
+          },
+          {
+            "text": "Audit",
+            "href": ""
+          },
+          {
+            "text": "Logout",
+            "href": ""
+          }
+        ],
+        "visible_text": [
+          "VIS",
+          "Dashboard",
+          "Staff Management",
+          "Shift Management",
+          "Weekly Roster",
+          "Shift Requests",
+          "Reference Data",
+          "Export",
+          "Audit",
+          "manager1",
+          "Logout",
+          "Roster CSV Export",
+          "Export offline-consumable finalized and published rosters with secure authorization and audit logging.",
+          "Target Week:",
+          "🏢 Facility: St. Jude General Hospital",
+          "📅 Selected Week: 2026-W33",
+          "Roster Summary",
+          "STATUS: DRAFT",
+          "ROSTER ID",
+          "#15",
+          "WEEK",
+          "2026-08-10",
+          "VERSION",
+          "v0",
+          "TOTAL ASSIGNMENTS",
+          "21 shifts",
+          "🔒",
+          "📥 Export to CSV",
+          "📥",
+          "Export Specification & Audit Compliance",
+          "Authorization: Strictly restricted to Facility Manager users within the facility scope.",
+          "Audit Event: Every export action records an audit entry with user identity, timestamp, byte size, and row count.",
+          "Export Format: Standard CSV containing complete shift dates, times, types, staff names, roles, and qualifications.",
+          "Secure Download: Uses authenticated API streams to prevent unauthorized file URL exposure."
+        ],
+        "body_snippet": "VIS Dashboard Staff Management Shift Management Weekly Roster Shift Requests Reference Data Export Audit manager1 Logout Roster CSV Export Export offline-consumable finalized and published rosters with secure authorization and audit logging. Target Week: 🏢 Facility: St. Jude General Hospital 📅 Selected Week: 2026-W33 Roster Summary STATUS: DRAFT ROSTER ID #15 WEEK 2026-08-10 VERSION v0 TOTAL ASSIGNMENTS 21 shifts 🔒 Export Blocked for Draft Roster Per business rule FR9 and security policies, roster export is restricted to Finalized or Published rosters. Please publish the roster in the Weekly Roster workspace before exporting. 📥 Export to CSV Export Specification & Audit Compliance Authorization: Strictly restricted to Facility Manager users within the facility scope. Audit Event: Every export action records an audit entry with user identity, timestamp, byte size, and row count. Export Format: Standard CSV containing complete shift dates, times, types, staff names, roles, and qualifications. Secure Download: Uses authenticated API streams to prevent unauthorized file URL exposure.",
+        "fetch_source": "SPA Module Inspector",
+        "confidence": "High",
+        "action_performed": "Click (Export)",
+        "timestamp": "2026-08-12T17:56:16.625678Z"
+      },
+      "AUDIT": {
+        "current_url": "https://vistapoc.nitor.in/manager/audit-history",
+        "page_title": "VIS Roster Management",
+        "https": true,
+        "headings": [
+          {
+            "tag": "h1",
+            "text": "VIS"
+          },
+          {
+            "tag": "h1",
+            "text": "Audit History"
+          },
+          {
+            "tag": "h2",
+            "text": "Filter Audit Entries"
+          }
+        ],
+        "input_fields": [
+          {
+            "type": "select",
+            "id": "entityType",
+            "name": "",
+            "placeholder": "Entity Type",
+            "required": false
+          },
+          {
+            "type": "text",
+            "id": "entityId",
+            "name": "",
+            "placeholder": "e.g., 12345",
+            "required": false
+          },
+          {
+            "type": "datetime-local",
+            "id": "startDate",
+            "name": "",
+            "placeholder": "Start Date",
+            "required": false
+          },
+          {
+            "type": "datetime-local",
+            "id": "endDate",
+            "name": "",
+            "placeholder": "End Date",
+            "required": false
+          },
+          {
+            "type": "text",
+            "id": "actorId",
+            "name": "",
+            "placeholder": "e.g., manager1",
+            "required": false
+          },
+          {
+            "type": "select",
+            "id": "action",
+            "name": "",
+            "placeholder": "Action Type",
+            "required": false
+          }
+        ],
+        "buttons": [
+          {
+            "text": "Dashboard",
+            "type": "submit"
+          },
+          {
+            "text": "Staff Management",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Management",
+            "type": "submit"
+          },
+          {
+            "text": "Weekly Roster",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Requests",
+            "type": "submit"
+          },
+          {
+            "text": "Reference Data",
+            "type": "submit"
+          },
+          {
+            "text": "Export",
+            "type": "submit"
+          },
+          {
+            "text": "Audit",
+            "type": "submit"
+          },
+          {
+            "text": "Logout",
+            "type": "submit"
+          },
+          {
+            "text": "Reset Filters",
+            "type": "button"
+          },
+          {
+            "text": "Apply Filters",
+            "type": "submit"
+          }
+        ],
+        "all_links": [],
+        "nav_links": [
+          {
+            "text": "Dashboard",
+            "href": ""
+          },
+          {
+            "text": "Staff Management",
+            "href": ""
+          },
+          {
+            "text": "Shift Management",
+            "href": ""
+          },
+          {
+            "text": "Weekly Roster",
+            "href": ""
+          },
+          {
+            "text": "Shift Requests",
+            "href": ""
+          },
+          {
+            "text": "Reference Data",
+            "href": ""
+          },
+          {
+            "text": "Export",
+            "href": ""
+          },
+          {
+            "text": "Audit",
+            "href": ""
+          },
+          {
+            "text": "Logout",
+            "href": ""
+          }
+        ],
+        "visible_text": [
+          "VIS",
+          "Dashboard",
+          "Staff Management",
+          "Shift Management",
+          "Weekly Roster",
+          "Shift Requests",
+          "Reference Data",
+          "Export",
+          "Audit",
+          "manager1",
+          "Logout",
+          "Audit History",
+          "View and filter audit events for your facility",
+          "Filter Audit Entries",
+          "Entity Type",
+          "Filter by the type of entity that was modified",
+          "Entity ID",
+          "Filter by the specific entity identifier",
+          "Start Date",
+          "Filter events from this date onwards",
+          "End Date",
+          "Filter events up to this date",
+          "Actor / User",
+          "Filter by the user who performed the action",
+          "Action Type",
+          "Filter by the type of action performed",
+          "Reset Filters",
+          "Apply Filters",
+          "Timestamp",
+          "Actor",
+          "Result Status",
+          "Summary",
+          "Aug 11, 2026, 11:05:22 AM",
+          "PUBLISH",
+          "ROSTER",
+          "SUCCESS",
+          "PUBLISH on ROSTER 7 - SUCCESS",
+          "Aug 11, 2026, 10:51:56 AM",
+          "PUBLISH on ROSTER 5 - SUCCESS",
+          "Aug 10, 2026, 04:33:54 PM",
+          "CREATE",
+          "SHIFT",
+          "CREATE on SHIFT 9 - SUCCESS",
+          "Aug 10, 2026, 04:33:01 PM",
+          "CREATE on SHIFT 8 - SUCCESS",
+          "Aug 10, 2026, 03:12:39 PM",
+          "UPDATE",
+          "UPDATE on SHIFT 2 - SUCCESS",
+          "Aug 10, 2026, 03:12:01 PM",
+          "UPDATE on SHIFT 7 - SUCCESS"
+        ],
+        "body_snippet": "VIS Dashboard Staff Management Shift Management Weekly Roster Shift Requests Reference Data Export Audit manager1 Logout Audit History View and filter audit events for your facility Filter Audit Entries Entity Type — All Entity Types — Roster Shift Staff User Filter by the type of entity that was modified Entity ID Filter by the specific entity identifier Start Date Filter events from this date onwards End Date Filter events up to this date Actor / User Filter by the user who performed the action Action Type — All Actions — CREATE UPDATE DELETE PUBLISH GENERATE Filter by the type of action performed Reset Filters Apply Filters Timestamp Actor Action Type Entity Type Entity ID Result Status Summary Aug 11, 2026, 11:05:22 AM manager1 PUBLISH ROSTER 7 SUCCESS PUBLISH on ROSTER 7 - SUCCESS Aug 11, 2026, 10:51:56 AM manager1 PUBLISH ROSTER 5 SUCCESS PUBLISH on ROSTER 5 - SUCCESS Aug 10, 2026, 04:33:54 PM manager1 CREATE SHIFT 9 SUCCESS CREATE on SHIFT 9 - SUCCESS Aug 10, 2026, 04:33:01 PM manager1 CREATE SHIFT 8 SUCCESS CREATE on SHIFT 8 - SUCCESS Aug 10, 2026, 03:12:39 PM manager1 UPDATE SHIFT 2 SUCCESS UPDATE on SHIFT 2 - SUCCESS Aug 10, 2026, 03:12:01 PM manager1 UPDATE SHIFT 7 SUCCESS UPDATE on SHIFT 7 - SUCCESS Aug 10, 2026, 03:11:57 PM manager1 UPDATE SHIFT 2 SUCCESS UPDATE on SHIFT 2 - SUCCESS Aug 10, 2026, 03:11:30 PM manager1 CREATE SHIFT 7 SUCCESS CREATE on SHIFT 7 - SUCCESS Aug 10, 2026, 03:10:24 PM manager1 CREATE SHIFT 6 SUCCESS CREATE on SHIFT 6 - SUCCESS Aug 10, 2026, 03:09:02 PM manager1 CREATE SHIFT 5 SUCCESS CREATE on SHIFT 5 - SUCCESS Aug 10, 2026, 03:08:04 PM manager1 CREATE SHIFT 4 SUCCESS CREATE on SHIFT 4 - SUCCESS Aug 10, 2026, 03:03:07 PM manager1 CREATE SHIFT 3 SUCCESS CREATE on SHIFT 3 - SUCCESS Aug 10, 2026, 03:03:01 PM manager1 CREATE SHIFT 2 SUCCESS CREATE on SHIFT 2 - SUCCESS Aug 10, 2026, 03:02:54 PM manager1 CREATE SHIFT 1 SUCCESS CREATE on SHIFT 1 - SUCCESS",
+        "fetch_source": "SPA Module Inspector",
+        "confidence": "High",
+        "action_performed": "Click (Audit)",
+        "timestamp": "2026-08-12T17:56:27.027452Z"
+      },
+      "SIGNUP": {
+        "current_url": "https://vistapoc.nitor.in/dashboard",
+        "page_title": "VIS Roster Management",
+        "https": true,
+        "headings": [
+          {
+            "tag": "h1",
+            "text": "VIS"
+          },
+          {
+            "tag": "h1",
+            "text": "Manager Dashboard"
+          },
+          {
+            "tag": "h2",
+            "text": "Facility Overview"
+          },
+          {
+            "tag": "h2",
+            "text": "Quick Actions"
+          }
+        ],
+        "input_fields": [],
+        "buttons": [
+          {
+            "text": "Dashboard",
+            "type": "submit"
+          },
+          {
+            "text": "Staff Management",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Management",
+            "type": "submit"
+          },
+          {
+            "text": "Weekly Roster",
+            "type": "submit"
+          },
+          {
+            "text": "Shift Requests",
+            "type": "submit"
+          },
+          {
+            "text": "Reference Data",
+            "type": "submit"
+          },
+          {
+            "text": "Export",
+            "type": "submit"
+          },
+          {
+            "text": "Audit",
+            "type": "submit"
+          },
+          {
+            "text": "Logout",
+            "type": "submit"
+          }
+        ],
+        "all_links": [],
+        "nav_links": [
+          {
+            "text": "Dashboard",
+            "href": ""
+          },
+          {
+            "text": "Staff Management",
+            "href": ""
+          },
+          {
+            "text": "Shift Management",
+            "href": ""
+          },
+          {
+            "text": "Weekly Roster",
+            "href": ""
+          },
+          {
+            "text": "Shift Requests",
+            "href": ""
+          },
+          {
+            "text": "Reference Data",
+            "href": ""
+          },
+          {
+            "text": "Export",
+            "href": ""
+          },
+          {
+            "text": "Audit",
+            "href": ""
+          },
+          {
+            "text": "Logout",
+            "href": ""
+          }
+        ],
+        "visible_text": [
+          "VIS",
+          "Dashboard",
+          "Staff Management",
+          "Shift Management",
+          "Weekly Roster",
+          "Shift Requests",
+          "Reference Data",
+          "Export",
+          "Audit",
+          "manager1",
+          "Logout",
+          "Manager Dashboard",
+          "Welcome, manager1 | St. Jude General Hospital",
+          "Facility Overview",
+          "Quick Actions",
+          "View Staff Roster",
+          "Manage Schedules",
+          "Generate Reports",
+          "Facility Settings"
+        ],
+        "body_snippet": "VIS Dashboard Staff Management Shift Management Weekly Roster Shift Requests Reference Data Export Audit manager1 Logout Manager Dashboard Welcome, manager1 | St. Jude General Hospital Facility Overview This is a placeholder for the facility manager dashboard. Future features will include roster management, staff scheduling, and facility operations overview. Quick Actions View Staff Roster Manage Schedules Generate Reports Facility Settings",
+        "fetch_source": "SPA Module Inspector",
+        "confidence": "High",
+        "action_performed": "Navigate",
+        "timestamp": "2026-08-12T17:56:28.767712Z"
+      }
+    }
+  },
+  "SessionState": {
+    "observation": "Session State",
+    "location": "https://vistapoc.nitor.in/manager/audit-history",
+    "logged_in": true,
+    "cookie_names": [],
+    "local_storage_keys": [
+      "vis_auth_state"
+    ],
+    "session_storage_keys": [],
+    "local_storage_preview": {
+      "vis_auth_state": "{\"userId\":1,\"username\":\"manager1\",\"role\":\"FACILITY_MANAGER\",\"facilityScope\":{\"facilityId\":100,\"facilityName\":\"St. Jude General Hospital\"},\"token\":\"[REDACTED_JWT]\",\"expiresAt\":\"202..."
+    },
+    "timestamp": "2026-08-12T17:56:27.043644Z",
+    "confidence": "High"
+  },
+  "api_endpoints_observed": [
+    "https://vistapoc.nitor.in/api/audit/entries",
+    "https://vistapoc.nitor.in/api/reference-data/holidays",
+    "https://vistapoc.nitor.in/api/v1/auth/login",
+    "https://vistapoc.nitor.in/api/v1/auth/me",
+    "https://vistapoc.nitor.in/api/v1/rosters/15/compliance",
+    "https://vistapoc.nitor.in/api/v1/rosters/week",
+    "https://vistapoc.nitor.in/api/v1/shift-requests/pending",
+    "https://vistapoc.nitor.in/api/v1/shifts",
+    "https://vistapoc.nitor.in/api/v1/staff"
+  ]
+}
